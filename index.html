@@ -566,6 +566,32 @@ body {
 .login-card .login-toggle { font-size: 12px; color: var(--primary); cursor: pointer; margin-top: 8px; }
 .login-card .login-toggle:hover { text-decoration: underline; }
 
+.login-mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+.login-mode-tab {
+  flex: 1;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.login-mode-tab.active {
+  background: var(--card);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -595,18 +621,28 @@ body {
 <div id="loginOverlay" class="login-overlay">
   <div class="login-card">
     <h2>保研时间线</h2>
-    <p class="login-sub" id="loginSub">登录以同步数据到云端</p>
-    <div class="form-group">
-      <label>邮箱</label>
-      <input type="email" id="loginEmail" placeholder="your@email.com">
+    <p class="login-sub" id="loginSub">选择使用方式</p>
+    <div class="login-mode-tabs">
+      <button class="login-mode-tab active" id="tabOnline" onclick="switchLoginMode('online')">在线同步</button>
+      <button class="login-mode-tab" id="tabLocal" onclick="switchLoginMode('local')">本地使用</button>
     </div>
-    <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="loginPassword" placeholder="至少6位密码">
+    <div id="loginFormBlock">
+      <div class="form-group">
+        <label>邮箱</label>
+        <input type="email" id="loginEmail" placeholder="your@email.com">
+      </div>
+      <div class="form-group">
+        <label>密码</label>
+        <input type="password" id="loginPassword" placeholder="至少6位密码">
+      </div>
+      <div class="login-error" id="loginError"></div>
+      <button class="btn btn-primary" onclick="handleLogin()" style="width:100%;" id="loginBtn">登录</button>
+      <div class="login-toggle" id="loginToggle" onclick="toggleLoginMode()">没有账号？点击注册</div>
     </div>
-    <div class="login-error" id="loginError"></div>
-    <button class="btn btn-primary" onclick="handleLogin()" style="width:100%;" id="loginBtn">登录</button>
-    <div class="login-toggle" id="loginToggle" onclick="toggleLoginMode()">没有账号？点击注册</div>
+    <div id="loginLocalBlock" style="display:none;">
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">数据仅保存在当前浏览器本地，不会上传云端。</p>
+      <button class="btn btn-primary" onclick="enterLocalMode()" style="width:100%;">开始使用</button>
+    </div>
   </div>
 </div>
 
@@ -886,6 +922,45 @@ async function bmobFetch(path, options = {}) {
 // ===== 认证管理 =====
 let loginMode = 'login';
 
+let useLocalOnly = false;
+
+function switchLoginMode(mode) {
+  if (mode === 'online') {
+    document.getElementById('tabOnline').classList.add('active');
+    document.getElementById('tabLocal').classList.remove('active');
+    document.getElementById('loginFormBlock').style.display = 'block';
+    document.getElementById('loginLocalBlock').style.display = 'none';
+    document.getElementById('loginSub').textContent = '登录以同步数据到云端';
+  } else {
+    document.getElementById('tabLocal').classList.add('active');
+    document.getElementById('tabOnline').classList.remove('active');
+    document.getElementById('loginFormBlock').style.display = 'none';
+    document.getElementById('loginLocalBlock').style.display = 'block';
+    document.getElementById('loginSub').textContent = '数据仅在本地浏览器保存';
+  }
+}
+
+function enterLocalMode() {
+  useLocalOnly = true;
+  currentUser = null;
+  sessionToken = '';
+  localStorage.setItem('baoyan_mode', 'local');
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('userChip').style.display = 'inline-flex';
+  document.getElementById('userChip').textContent = '本地模式';
+  document.getElementById('userChip').title = '数据仅保存在本地';
+  document.getElementById('logoutBtn').style.display = 'inline-flex';
+  document.getElementById('logoutBtn').textContent = '切换在线';
+  document.getElementById('logoutBtn').onclick = enterOnlineMode;
+}
+
+function enterOnlineMode() {
+  useLocalOnly = false;
+  document.getElementById('loginOverlay').style.display = 'flex';
+  switchLoginMode('online');
+  toggleLoginMode(); // 重置为登录模式
+}
+
 function toggleLoginMode() {
   loginMode = loginMode === 'login' ? 'register' : 'login';
   document.getElementById('loginBtn').textContent = loginMode === 'login' ? '登录' : '注册';
@@ -950,12 +1025,21 @@ function onAuthStateChanged(user) {
     chip.textContent = email;
     chip.title = email;
     logout.style.display = 'inline-flex';
+    logout.textContent = '退出';
+    logout.onclick = handleLogout;
+    useLocalOnly = false;
+    localStorage.removeItem('baoyan_mode');
     loadCloudData();
   } else {
     overlay.style.display = 'flex';
     chip.style.display = 'none';
     logout.style.display = 'none';
     currentUser = null;
+    useLocalOnly = false;
+    localStorage.removeItem('baoyan_mode');
+    switchLoginMode('online');
+    document.getElementById('loginFormBlock').style.display = 'block';
+    document.getElementById('loginLocalBlock').style.display = 'none';
   }
 }
 
@@ -1165,11 +1249,10 @@ function loadData() {
 }
 function saveData() {
   saveLocalData();
+  if (useLocalOnly) return;
   if (currentUser && cloudReady) {
     console.log('触发云端同步, items数量:', items.length);
     saveAllToCloud();
-  } else {
-    console.log('跳过云端同步: currentUser=', !!currentUser, 'cloudReady=', cloudReady);
   }
 }
 
@@ -1808,7 +1891,7 @@ async function saveMaterialItem(mat) {
     await new Promise((resolve) => { tx.oncomplete = resolve; });
   } catch(e) { console.error('本地保存材料失败:', e); }
   // 同步到云端
-  if (currentUser && cloudReady) {
+  if (!useLocalOnly && currentUser && cloudReady) {
     try { await saveMaterialToCloud(mat); } catch(e) {
       console.error('材料云端同步失败:', e.message);
       document.getElementById('pdfStatus').textContent = '云端同步失败: ' + e.message;
@@ -2110,6 +2193,11 @@ async function init() {
   calendarMonth = now.getMonth();
   renderTable();
 
+  // 本地模式：跳过登录
+  if (localStorage.getItem('baoyan_mode') === 'local') {
+    enterLocalMode();
+    return;
+  }
   // 检查是否有保存的 session
   const savedSession = localStorage.getItem('baoyan_session');
   if (savedSession) {
