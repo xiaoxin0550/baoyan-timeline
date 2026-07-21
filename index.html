@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>推免申请时间节点管理</title>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<script src="https://cdn.bmob.cn/bmob-5.0.1.min.js"></script>
+<!-- 使用 Bmob REST API，无需 SDK -->
 <style>
 :root {
   --bg: #f5f6fa;
@@ -854,21 +854,33 @@ body {
 <button class="fab" onclick="openAddModal()" title="添加项目">+</button>
 
 <script>
-// ===== Bmob 配置 =====
-// 在 Bmob 控制台 → 应用设置 → 应用密钥 获取
-const BMOB_CONFIG = {
-  applicationId: '838c4a7e97e4f64570309fd462f34f95',
-  restApiKey: '96b9411e801f4a8d01b255a924609fbe'
-};
-
-let cloudReady = false;
+// ===== Bmob REST API 配置 =====
+const BMOB_APP_ID = '838c4a7e97e4f64570309fd462f34f95';
+const BMOB_REST_KEY = '96b9411e801f4a8d01b255a924609fbe';
+const BMOB_API = 'https://api.bmobcloud.com/1';
+let cloudReady = true;
 let currentUser = null;
+let sessionToken = '';
 
-try {
-  Bmob.initialize(BMOB_CONFIG.applicationId, BMOB_CONFIG.restApiKey);
-  cloudReady = true;
-} catch(e) {
-  console.warn('Bmob 未配置，使用本地模式');
+function bmobHeaders() {
+  const h = {
+    'Content-Type': 'application/json',
+    'X-Bmob-Application-Id': BMOB_APP_ID,
+    'X-Bmob-REST-API-Key': BMOB_REST_KEY
+  };
+  if (sessionToken) h['X-Bmob-Session-Token'] = sessionToken;
+  return h;
+}
+
+async function bmobFetch(path, options = {}) {
+  const url = path.startsWith('http') ? path : `${BMOB_API}${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...bmobHeaders(), ...(options.headers || {}) }
+  });
+  const data = await res.json();
+  if (!res.ok && data.error) throw new Error(data.error);
+  return data;
 }
 
 // ===== 认证管理 =====
@@ -894,20 +906,22 @@ async function handleLogin() {
   try {
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = '处理中...';
+    let result;
     if (loginMode === 'register') {
-      const user = new Bmob.User();
-      user.set('username', email);
-      user.set('password', password);
-      user.set('email', email);
-      await user.signUp();
+      result = await bmobFetch('/users', {
+        method: 'POST',
+        body: JSON.stringify({ username: email, password: password, email: email })
+      });
     } else {
-      await Bmob.User.login(email, password);
+      result = await bmobFetch(`/login?username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
     }
-    onAuthStateChanged(Bmob.User.current());
+    sessionToken = result.sessionToken;
+    currentUser = result;
+    onAuthStateChanged(currentUser);
   } catch(e) {
     let msg = e.message || '登录失败';
     if (msg.includes('already taken')) msg = '该邮箱已注册';
-    else if (msg.includes('login failed')) msg = '邮箱或密码错误';
+    else if (msg.includes('incorrect')) msg = '邮箱或密码错误';
     else if (msg.includes('not found')) msg = '账号不存在';
     errEl.textContent = msg;
     document.getElementById('loginBtn').disabled = false;
@@ -917,7 +931,8 @@ async function handleLogin() {
 
 function handleLogout() {
   if (confirm('退出登录后，本地数据将保留但不会同步到云端。确定退出？')) {
-    Bmob.User.logout();
+    sessionToken = '';
+    currentUser = null;
     onAuthStateChanged(null);
   }
 }
@@ -931,7 +946,7 @@ function onAuthStateChanged(user) {
   if (user) {
     overlay.style.display = 'none';
     chip.style.display = 'inline-flex';
-    const email = user.get('email');
+    const email = user.email || user.username || '';
     chip.textContent = email;
     chip.title = email;
     logout.style.display = 'inline-flex';
@@ -944,34 +959,33 @@ function onAuthStateChanged(user) {
   }
 }
 
-// ===== Bmob 数据同步 =====
-const ApplicationItem = Bmob.Object.extend('ApplicationItem');
-const MaterialMeta = Bmob.Object.extend('MaterialMeta');
-
+// ===== REST API 数据同步 =====
 async function loadCloudData() {
   if (!currentUser || !cloudReady) return;
   try {
-    const username = currentUser.get('username');
-    const query = new Bmob.Query(ApplicationItem);
-    query.equalTo('owner', username);
-    query.limit(1000);
-    const results = await query.find();
-    const cloudItems = results.map(r => {
-      const attrs = r.attributes;
-      return { id: r.id, school: attrs.school, program: attrs.program, major: attrs.major,
-        status: attrs.status, stages: attrs.stages, notes: attrs.notes,
-        checklist: attrs.checklist, createdAt: attrs.createdAt };
-    });
+    const owner = currentUser.username || currentUser.email;
+    console.log('开始加载云端数据, owner:', owner);
+    const where = JSON.stringify({ owner: owner });
+    const result = await bmobFetch(`/classes/ApplicationItem?where=${encodeURIComponent(where)}&limit=1000`);
+    console.log('云端数据返回:', result);
+    const cloudItems = (result.results || []).map(r => ({
+      id: r.localId || r.objectId, school: r.school, program: r.program, major: r.major,
+      status: r.status, stages: r.stages, notes: r.notes,
+      checklist: r.checklist, createdAt: r.itemCreatedAt || r.createdAt
+    }));
+    console.log('云端项目数:', cloudItems.length);
 
     const localItems = loadLocalData();
     const cloudIds = new Set(cloudItems.map(i => i.id));
     const localOnly = localItems.filter(i => !cloudIds.has(i.id));
+    console.log('本地项目数:', localItems.length, '仅本地有的:', localOnly.length);
 
     for (const item of localOnly) {
       await saveItemToCloud(item);
     }
     items = [...cloudItems, ...localOnly];
     saveLocalData(items);
+    console.log('同步完成, 总项目数:', items.length);
   } catch(e) {
     console.error('加载云端数据失败:', e);
     items = loadLocalData();
@@ -982,31 +996,47 @@ async function loadCloudData() {
 async function saveItemToCloud(item) {
   if (!currentUser || !cloudReady) return;
   try {
-    const query = new Bmob.Query(ApplicationItem);
-    query.equalTo('objectId', item.id);
-    const existing = await query.first();
-    const obj = existing || new ApplicationItem();
-    obj.set('objectId', item.id);
-    obj.set('school', item.school);
-    obj.set('program', item.program);
-    obj.set('major', item.major || '');
-    obj.set('status', item.status);
-    obj.set('stages', item.stages);
-    obj.set('notes', item.notes || '');
-    obj.set('checklist', item.checklist || []);
-    obj.set('createdAt', item.createdAt);
-    obj.set('owner', currentUser.get('username'));
-    await obj.save();
-  } catch(e) { console.error('保存到云端失败:', e); }
+    const body = {
+      localId: item.id, school: item.school, program: item.program,
+      major: item.major || '', status: item.status, stages: item.stages,
+      notes: item.notes || '', checklist: item.checklist || [],
+      itemCreatedAt: item.createdAt, owner: currentUser.username || currentUser.email
+    };
+    const where = JSON.stringify({ localId: item.id });
+    const existing = await bmobFetch(`/classes/ApplicationItem?where=${encodeURIComponent(where)}&limit=1`);
+    if (existing.results && existing.results.length > 0) {
+      console.log('更新云端项目:', item.school, item.program);
+      await bmobFetch(`/classes/ApplicationItem/${existing.results[0].objectId}`, {
+        method: 'PUT', body: JSON.stringify(body)
+      });
+    } else {
+      console.log('创建云端项目:', item.school, item.program);
+      await bmobFetch('/classes/ApplicationItem', {
+        method: 'POST', body: JSON.stringify(body)
+      });
+    }
+  } catch(e) {
+    console.error('保存到云端失败:', item.school, e);
+  }
+}
+
+async function saveAllToCloud() {
+  if (!currentUser || !cloudReady) return;
+  console.log('开始同步所有项目到云端...');
+  for (const item of items) {
+    await saveItemToCloud(item);
+  }
+  console.log('全部同步完成');
 }
 
 async function deleteItemFromCloud(id) {
   if (!currentUser || !cloudReady) return;
   try {
-    const query = new Bmob.Query(ApplicationItem);
-    query.equalTo('objectId', id);
-    const obj = await query.first();
-    if (obj) await obj.destroy();
+    const where = JSON.stringify({ localId: id });
+    const existing = await bmobFetch(`/classes/ApplicationItem?where=${encodeURIComponent(where)}&limit=1`);
+    if (existing.results && existing.results.length > 0) {
+      await bmobFetch(`/classes/ApplicationItem/${existing.results[0].objectId}`, { method: 'DELETE' });
+    }
   } catch(e) { console.error('云端删除失败:', e); }
 }
 
@@ -1017,43 +1047,34 @@ async function saveAllToCloud() {
   }
 }
 
-// ===== Bmob 材料管理 =====
+// ===== REST API 材料管理 =====
 async function loadCloudMaterials() {
   if (!currentUser || !cloudReady) return;
   try {
-    const username = currentUser.get('username');
-    const query = new Bmob.Query(MaterialMeta);
-    query.equalTo('owner', username);
-    query.limit(500);
-    const results = await query.find();
+    const owner = currentUser.username || currentUser.email;
+    const where = JSON.stringify({ owner: owner });
+    const result = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=500`);
     const cloudMats = [];
     const localMatsArr = await loadLocalMaterials();
     const localIds = new Set(localMatsArr.map(m => m.id));
 
-    for (const r of results) {
-      const attrs = r.attributes;
-      const meta = { id: r.id, name: attrs.name, fileName: attrs.fileName,
-        type: attrs.type, size: attrs.size, uploadedAt: attrs.uploadedAt, fileUrl: attrs.fileUrl };
-      if (!localIds.has(meta.id)) {
-        meta._needDownload = true;
-      }
+    for (const r of (result.results || [])) {
+      const meta = { id: r.localId || r.objectId, name: r.name, fileName: r.fileName,
+        type: r.type, size: r.size, uploadedAt: r.uploadedAt, fileUrl: r.fileUrl };
+      if (!localIds.has(meta.id)) meta._needDownload = true;
       cloudMats.push(meta);
     }
 
-    // 下载云端独有的文件内容
     for (const mat of cloudMats) {
       if (mat._needDownload && mat.fileUrl) {
         try {
           const resp = await fetch(mat.fileUrl);
           mat.data = await resp.text();
           delete mat._needDownload;
-        } catch(e) {
-          console.error('下载材料失败:', mat.name, e);
-        }
+        } catch(e) { console.error('下载材料失败:', mat.name, e); }
       }
     }
 
-    // 上传本地独有的材料
     for (const mat of localMatsArr) {
       if (!cloudMats.some(m => m.id === mat.id)) {
         await saveMaterialToCloud(mat);
@@ -1072,45 +1093,50 @@ async function loadCloudMaterials() {
 }
 
 async function saveMaterialToCloud(mat) {
-  if (!currentUser || !cloudReady) return;
+  if (!currentUser || !cloudReady) { console.log('材料云端上传跳过：未登录或云未就绪'); return; }
   try {
+    console.log('开始云端上传材料:', mat.fileName, '大小:', mat.size);
     const base64 = mat.data.split(',')[1];
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mat.type });
-    const file = new Bmob.File(mat.fileName, blob);
-    await file.save();
 
-    // 保存元数据
-    const metaObj = new MaterialMeta();
-    metaObj.set('objectId', mat.id);
-    metaObj.set('name', mat.name);
-    metaObj.set('fileName', mat.fileName);
-    metaObj.set('type', mat.type);
-    metaObj.set('size', mat.size);
-    metaObj.set('uploadedAt', mat.uploadedAt);
-    metaObj.set('fileUrl', file.url());
-    metaObj.set('owner', currentUser.get('username'));
-    await metaObj.save();
-  } catch(e) { console.error('上传材料到云端失败:', e); throw e; }
+    const formData = new FormData();
+    formData.append('file', new Blob([bytes], { type: mat.type }), mat.fileName);
+    const uploadRes = await fetch(`${BMOB_API}/files/${mat.fileName}`, {
+      method: 'POST',
+      headers: { 'X-Bmob-Application-Id': BMOB_APP_ID, 'X-Bmob-REST-API-Key': BMOB_REST_KEY },
+      body: formData
+    });
+    const uploadData = await uploadRes.json();
+    console.log('文件上传响应:', uploadData);
+    if (!uploadRes.ok) throw new Error(uploadData.error || '上传失败');
+    const fileUrl = uploadData.url;
+
+    const body = {
+      localId: mat.id, name: mat.name, fileName: mat.fileName,
+      type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt,
+      fileUrl: fileUrl, owner: currentUser.username || currentUser.email
+    };
+    const metaRes = await bmobFetch('/classes/MaterialMeta', { method: 'POST', body: JSON.stringify(body) });
+    console.log('材料元数据保存成功:', metaRes);
+  } catch(e) {
+    console.error('上传材料到云端失败:', e);
+    throw e;
+  }
 }
 
 async function deleteMaterialFromCloud(id) {
   if (!currentUser || !cloudReady) return;
   try {
-    const query = new Bmob.Query(MaterialMeta);
-    query.equalTo('objectId', id);
-    const metaObj = await query.first();
-    if (metaObj) {
-      const fileUrl = metaObj.get('fileUrl');
-      if (fileUrl) {
-        try {
-          const file = new Bmob.File('', fileUrl);
-          await file.destroy();
-        } catch(e) { /* 文件可能已删除 */ }
+    const where = JSON.stringify({ localId: id });
+    const existing = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=1`);
+    if (existing.results && existing.results.length > 0) {
+      const obj = existing.results[0];
+      if (obj.fileUrl) {
+        try { await bmobFetch(obj.fileUrl, { method: 'DELETE' }); } catch(e) {}
       }
-      await metaObj.destroy();
+      await bmobFetch(`/classes/MaterialMeta/${obj.objectId}`, { method: 'DELETE' });
     }
   } catch(e) { console.error('云端删除材料失败:', e); }
 }
@@ -1139,7 +1165,12 @@ function loadData() {
 }
 function saveData() {
   saveLocalData();
-  if (currentUser && cloudReady) saveAllToCloud();
+  if (currentUser && cloudReady) {
+    console.log('触发云端同步, items数量:', items.length);
+    saveAllToCloud();
+  } else {
+    console.log('跳过云端同步: currentUser=', !!currentUser, 'cloudReady=', cloudReady);
+  }
 }
 
 function generateId() {
@@ -1778,7 +1809,11 @@ async function saveMaterialItem(mat) {
   } catch(e) { console.error('本地保存材料失败:', e); }
   // 同步到云端
   if (currentUser && cloudReady) {
-    try { await saveMaterialToCloud(mat); } catch(e) { /* 云端保存失败不影响本地 */ }
+    try { await saveMaterialToCloud(mat); } catch(e) {
+      console.error('材料云端同步失败:', e.message);
+      document.getElementById('pdfStatus').textContent = '云端同步失败: ' + e.message;
+      setTimeout(() => { document.getElementById('pdfStatus').textContent = ''; }, 5000);
+    }
   }
 }
 
@@ -2075,19 +2110,38 @@ async function init() {
   calendarMonth = now.getMonth();
   renderTable();
 
-  // 检查是否已登录
-  if (cloudReady) {
-    const user = Bmob.User.current();
-    if (user) {
-      onAuthStateChanged(user);
-    } else {
-      onAuthStateChanged(null);
-    }
-  } else {
-    document.getElementById('loginOverlay').style.display = 'none';
-    document.getElementById('loginSub').textContent = '（未配置云同步，使用本地模式）';
+  // 检查是否有保存的 session
+  const savedSession = localStorage.getItem('baoyan_session');
+  if (savedSession) {
+    try {
+      const parsed = JSON.parse(savedSession);
+      sessionToken = parsed.sessionToken;
+      currentUser = parsed.user;
+      onAuthStateChanged(currentUser);
+      return;
+    } catch(e) {}
   }
+  onAuthStateChanged(null);
 }
+
+// 在 handleLogin 成功后保存 session
+const _origHandleLogin = handleLogin;
+handleLogin = async function() {
+  await _origHandleLogin();
+  if (currentUser) {
+    localStorage.setItem('baoyan_session', JSON.stringify({
+      sessionToken: sessionToken,
+      user: currentUser
+    }));
+  }
+};
+
+// 在 handleLogout 时清除 session
+const _origHandleLogout = handleLogout;
+handleLogout = function() {
+  localStorage.removeItem('baoyan_session');
+  _origHandleLogout();
+};
 
 init();
 </script>
