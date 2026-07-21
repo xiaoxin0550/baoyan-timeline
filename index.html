@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>推免申请时间节点管理</title>
-<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-<!-- 使用 Bmob REST API，无需 SDK -->
+<!-- pdf-lib 按需加载，不阻塞页面 -->
 <style>
 :root {
   --bg: #f5f6fa;
@@ -2121,11 +2120,28 @@ function movePdfItem(direction) {
   renderPDFSelectList();
 }
 
+let pdfLibReady = false;
+async function ensurePDFLib() {
+  if (pdfLibReady) return;
+  if (typeof PDFLib === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  pdfLibReady = true;
+}
+
 async function generatePDF() {
   if (selectedPdfIds.length === 0) { alert('请先选择至少一个材料'); return; }
   const statusEl = document.getElementById('pdfStatus');
-  statusEl.textContent = '正在生成...';
+  statusEl.textContent = '正在加载...';
   try {
+    await ensurePDFLib();
+    statusEl.textContent = '正在生成...';
     const pdfDoc = await PDFLib.PDFDocument.create();
     for (const id of selectedPdfIds) {
       const mat = materialsLibrary.find(m => m.id === id);
