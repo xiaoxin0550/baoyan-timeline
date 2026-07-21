@@ -1187,29 +1187,21 @@ async function loadCloudMaterials() {
 
     for (const r of (result.results || [])) {
       const meta = { id: r.localId || r.objectId, name: r.name, fileName: r.fileName,
-        type: r.type, size: r.size, uploadedAt: r.uploadedAt, fileUrl: r.fileUrl };
-      if (!localIds.has(meta.id)) meta._needDownload = true;
-      cloudMats.push(meta);
-    }
-
-    for (const mat of cloudMats) {
-      if (mat._needDownload && mat.fileUrl) {
-        try {
-          const resp = await fetch(mat.fileUrl);
-          mat.data = await resp.text();
-          delete mat._needDownload;
-        } catch(e) { console.error('下载材料失败:', mat.name, e); }
+        type: r.type, size: r.size, uploadedAt: r.uploadedAt, data: r.data };
+      if (!localIds.has(meta.id)) {
+        cloudMats.push(meta);
       }
     }
 
+    // 上传本地独有的材料
     for (const mat of localMatsArr) {
       if (!cloudMats.some(m => m.id === mat.id)) {
         await saveMaterialToCloud(mat);
-        cloudMats.push({ id: mat.id, name: mat.name, fileName: mat.fileName, type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt });
+        cloudMats.push(mat);
       }
     }
 
-    materialsLibrary = [...cloudMats.filter(m => !m._needDownload), ...localMatsArr.filter(m => !cloudMats.some(cm => cm.id === m.id))];
+    materialsLibrary = [...cloudMats, ...localMatsArr.filter(m => cloudMats.some(cm => cm.id === m.id))];
     const seen = new Set();
     materialsLibrary = materialsLibrary.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
     saveLocalMaterials();
@@ -1222,33 +1214,25 @@ async function loadCloudMaterials() {
 async function saveMaterialToCloud(mat) {
   if (!currentUser || !cloudReady) { console.log('材料云端上传跳过：未登录或云未就绪'); return; }
   try {
-    console.log('开始云端上传材料:', mat.fileName, '大小:', mat.size);
-    const base64 = mat.data.split(',')[1];
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const formData = new FormData();
-    formData.append('file', new Blob([bytes], { type: mat.type }), mat.fileName);
-    const uploadRes = await fetch(`${BMOB_API}/files/${mat.fileName}`, {
-      method: 'POST',
-      headers: { 'X-Bmob-Application-Id': BMOB_APP_ID, 'X-Bmob-REST-API-Key': BMOB_REST_KEY },
-      body: formData
-    });
-    const uploadData = await uploadRes.json();
-    console.log('文件上传响应:', uploadData);
-    if (!uploadRes.ok) throw new Error(uploadData.error || '上传失败');
-    const fileUrl = uploadData.url;
-
+    console.log('开始云端保存材料:', mat.fileName, '大小:', mat.size);
     const body = {
       localId: mat.id, name: mat.name, fileName: mat.fileName,
       type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt,
-      fileUrl: fileUrl, owner: currentUser.username || currentUser.email
+      data: mat.data, owner: currentUser.username || currentUser.email
     };
-    const metaRes = await bmobFetch('/classes/MaterialMeta', { method: 'POST', body: JSON.stringify(body) });
-    console.log('材料元数据保存成功:', metaRes);
+    // 检查是否已存在
+    const where = JSON.stringify({ localId: mat.id });
+    const existing = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=1`);
+    if (existing.results && existing.results.length > 0) {
+      await bmobFetch(`/classes/MaterialMeta/${existing.results[0].objectId}`, {
+        method: 'PUT', body: JSON.stringify(body)
+      });
+    } else {
+      await bmobFetch('/classes/MaterialMeta', { method: 'POST', body: JSON.stringify(body) });
+    }
+    console.log('材料云端保存成功:', mat.fileName);
   } catch(e) {
-    console.error('上传材料到云端失败:', e);
+    console.error('保存材料到云端失败:', e);
     throw e;
   }
 }
@@ -1259,11 +1243,7 @@ async function deleteMaterialFromCloud(id) {
     const where = JSON.stringify({ localId: id });
     const existing = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=1`);
     if (existing.results && existing.results.length > 0) {
-      const obj = existing.results[0];
-      if (obj.fileUrl) {
-        try { await bmobFetch(obj.fileUrl, { method: 'DELETE' }); } catch(e) {}
-      }
-      await bmobFetch(`/classes/MaterialMeta/${obj.objectId}`, { method: 'DELETE' });
+      await bmobFetch(`/classes/MaterialMeta/${existing.results[0].objectId}`, { method: 'DELETE' });
     }
   } catch(e) { console.error('云端删除材料失败:', e); }
 }
