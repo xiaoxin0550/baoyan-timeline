@@ -2398,7 +2398,7 @@ async function doAIFill() {
         model: 'deepseek-chat',
         messages: [{
           role: 'system',
-          content: '你是一个保研信息提取助手。从用户提供的通知文本中提取信息，返回纯JSON，不要markdown标记。格式：{"school":"学校名","program":"项目名","major":"专业","stages":[{"name":"阶段名","date":"YYYY-MM-DD"},...],"notes":"备注摘要"}。如果某项不确定，填""。日期格式必须是YYYY-MM-DD。'
+          content: '你是一个保研信息提取助手。从用户提供的通知文本中提取信息，返回纯JSON，不要markdown标记。格式：{"school":"学校名","program":"项目名","major":"专业","stages":[{"name":"阶段名","date":"YYYY-MM-DD"},...],"notes":"备注摘要","links":[{"name":"链接名称","url":"完整URL"}],"materials":["材料名1","材料名2"]}。stages包含报名开始/截止、材料提交截止、入营通知、复试参营、录取公示等。links提取文中所有URL链接。materials提取文中提到的申请材料（成绩单、推荐信、个人陈述、身份证、学生证、获奖证书等）。如果某项不确定，填""或[]。日期格式必须是YYYY-MM-DD。'
         }, {
           role: 'user',
           content: text
@@ -2420,6 +2420,14 @@ async function doAIFill() {
     if (parsed.notes) document.getElementById('formNotes').value = parsed.notes;
     if (parsed.stages && parsed.stages.length > 0) {
       buildStageInputs(parsed.stages);
+    }
+    // 填充链接
+    if (parsed.links && parsed.links.length > 0) {
+      buildLinksInputs(parsed.links);
+    }
+    // 填充材料清单
+    if (parsed.materials && parsed.materials.length > 0) {
+      buildChecklistInputs(parsed.materials.map(m => ({ name: m, done: false })));
     }
     status.textContent = '识别完成，请核对';
     status.style.color = 'var(--success)';
