@@ -1040,6 +1040,12 @@ function onAuthStateChanged(user) {
     switchLoginMode('online');
     document.getElementById('loginFormBlock').style.display = 'block';
     document.getElementById('loginLocalBlock').style.display = 'none';
+    // 重置登录按钮状态
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('loginBtn').textContent = '登录';
+    document.getElementById('loginError').textContent = '';
+    document.getElementById('loginEmail').value = '';
+    document.getElementById('loginPassword').value = '';
   }
 }
 
@@ -1048,7 +1054,7 @@ async function loadCloudData() {
   if (!currentUser || !cloudReady) return;
   try {
     const owner = currentUser.username || currentUser.email;
-    console.log('开始加载云端数据, owner:', owner);
+    console.log('加载云端数据, owner:', owner);
     const where = JSON.stringify({ owner: owner });
     const result = await bmobFetch(`/classes/ApplicationItem?where=${encodeURIComponent(where)}&limit=1000`);
     const cloudItems = (result.results || []).map(r => ({
@@ -1058,31 +1064,16 @@ async function loadCloudData() {
     }));
     console.log('云端项目数:', cloudItems.length);
 
-    // 检查是否切换了账号：如果本地存储的上一个用户和当前用户不同，丢弃本地数据
-    const prevOwner = localStorage.getItem('baoyan_last_owner');
-    const accountChanged = prevOwner && prevOwner !== owner;
-
-    if (accountChanged) {
-      console.log('检测到账号切换，清除本地数据');
-      localStorage.removeItem(STORAGE_KEY);
-      materialsLibrary = [];
-      try { saveLocalMaterials(); } catch(e) {}
-    }
-
-    const localItems = accountChanged ? [] : loadLocalData();
+    const localItems = loadLocalData();
     const cloudIds = new Set(cloudItems.map(i => i.id));
     const localOnly = localItems.filter(i => !cloudIds.has(i.id));
-    console.log('本地项目数:', localItems.length, '仅本地有的:', localOnly.length);
 
-    // 仅当没有切换账号时，才上传本地独有数据
-    if (!accountChanged) {
-      for (const item of localOnly) {
-        await saveItemToCloud(item);
-      }
+    // 上传本地独有的数据到云端
+    for (const item of localOnly) {
+      await saveItemToCloud(item);
     }
-    items = [...cloudItems, ...(accountChanged ? [] : localOnly)];
+    items = [...cloudItems, ...localOnly];
     saveLocalData(items);
-    localStorage.setItem('baoyan_last_owner', owner);
     console.log('同步完成, 总项目数:', items.length);
   } catch(e) {
     console.error('加载云端数据失败:', e);
@@ -1239,8 +1230,13 @@ async function deleteMaterialFromCloud(id) {
   } catch(e) { console.error('云端删除材料失败:', e); }
 }
 
-// ===== 本地存储（离线缓存） =====
-const STORAGE_KEY = 'baoyan_timeline_data';
+// ===== 本地存储（离线缓存，按用户隔离） =====
+function getStorageKey() {
+  if (useLocalOnly) return 'baoyan_local_data';
+  const owner = currentUser ? (currentUser.username || currentUser.email) : 'anonymous';
+  return `baoyan_data_${owner}`;
+}
+
 let items = [];
 let currentView = 'table';
 let editingId = null;
@@ -1248,13 +1244,13 @@ let calendarYear, calendarMonth;
 
 function loadLocalData() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getStorageKey());
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
 function saveLocalData(data) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data || items)); }
+  try { localStorage.setItem(getStorageKey(), JSON.stringify(data || items)); }
   catch(e) { /* 静默失败 */ }
 }
 
