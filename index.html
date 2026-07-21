@@ -1187,9 +1187,23 @@ async function loadCloudMaterials() {
 
     for (const r of (result.results || [])) {
       const meta = { id: r.localId || r.objectId, name: r.name, fileName: r.fileName,
-        type: r.type, size: r.size, uploadedAt: r.uploadedAt, data: r.data };
+        type: r.type, size: r.size, uploadedAt: r.uploadedAt, data: r.data,
+        chunked: r.chunked, totalChunks: r.totalChunks };
       if (!localIds.has(meta.id)) {
         cloudMats.push(meta);
+      }
+    }
+
+    // 重新组装分块数据
+    for (const mat of cloudMats) {
+      if (mat.chunked && mat.totalChunks > 0 && !mat.data) {
+        const chunkWhere = JSON.stringify({ materialId: mat.id });
+        const chunkResult = await bmobFetch(`/classes/MaterialChunk?where=${encodeURIComponent(chunkWhere)}&limit=100&order=chunkIndex`);
+        if (chunkResult.results && chunkResult.results.length > 0) {
+          chunkResult.results.sort((a, b) => a.chunkIndex - b.chunkIndex);
+          mat.data = chunkResult.results.map(c => c.data).join('');
+          console.log('材料分块重组完成:', mat.fileName, '分块数:', chunkResult.results.length);
+        }
       }
     }
 
@@ -1215,22 +1229,54 @@ async function saveMaterialToCloud(mat) {
   if (!currentUser || !cloudReady) { console.log('材料云端上传跳过：未登录或云未就绪'); return; }
   try {
     console.log('开始云端保存材料:', mat.fileName, '大小:', mat.size);
-    const body = {
-      localId: mat.id, name: mat.name, fileName: mat.fileName,
-      type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt,
-      data: mat.data, owner: currentUser.username || currentUser.email
-    };
-    // 检查是否已存在
+    const owner = currentUser.username || currentUser.email;
+    const CHUNK_SIZE = 2000000; // 2MB base64 chars per chunk (fits under 3MB Bmob limit)
+
+    // 删除已有的旧记录和分块
     const where = JSON.stringify({ localId: mat.id });
     const existing = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=1`);
     if (existing.results && existing.results.length > 0) {
-      await bmobFetch(`/classes/MaterialMeta/${existing.results[0].objectId}`, {
-        method: 'PUT', body: JSON.stringify(body)
-      });
-    } else {
-      await bmobFetch('/classes/MaterialMeta', { method: 'POST', body: JSON.stringify(body) });
+      await bmobFetch(`/classes/MaterialMeta/${existing.results[0].objectId}`, { method: 'DELETE' });
     }
-    console.log('材料云端保存成功:', mat.fileName);
+    // 删除旧分块
+    const chunkWhere = JSON.stringify({ materialId: mat.id });
+    const oldChunks = await bmobFetch(`/classes/MaterialChunk?where=${encodeURIComponent(chunkWhere)}&limit=100`);
+    if (oldChunks.results) {
+      for (const c of oldChunks.results) {
+        await bmobFetch(`/classes/MaterialChunk/${c.objectId}`, { method: 'DELETE' });
+      }
+    }
+
+    const data = mat.data || '';
+    const needsChunking = data.length > CHUNK_SIZE;
+    const totalChunks = needsChunking ? Math.ceil(data.length / CHUNK_SIZE) : 0;
+
+    // 保存元数据
+    const metaBody = {
+      localId: mat.id, name: mat.name, fileName: mat.fileName,
+      type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt,
+      data: needsChunking ? '' : data,
+      chunked: needsChunking,
+      totalChunks: totalChunks,
+      owner: owner
+    };
+    const metaRes = await bmobFetch('/classes/MaterialMeta', { method: 'POST', body: JSON.stringify(metaBody) });
+
+    // 分块保存
+    if (needsChunking) {
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = data.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        await bmobFetch('/classes/MaterialChunk', { method: 'POST', body: JSON.stringify({
+          materialId: mat.id,
+          chunkIndex: i,
+          data: chunk,
+          owner: owner
+        })});
+      }
+      console.log(`材料分${totalChunks}块保存成功:`, mat.fileName);
+    } else {
+      console.log('材料保存成功:', mat.fileName);
+    }
   } catch(e) {
     console.error('保存材料到云端失败:', e);
     throw e;
@@ -1244,6 +1290,14 @@ async function deleteMaterialFromCloud(id) {
     const existing = await bmobFetch(`/classes/MaterialMeta?where=${encodeURIComponent(where)}&limit=1`);
     if (existing.results && existing.results.length > 0) {
       await bmobFetch(`/classes/MaterialMeta/${existing.results[0].objectId}`, { method: 'DELETE' });
+    }
+    // 删除分块
+    const chunkWhere = JSON.stringify({ materialId: id });
+    const chunks = await bmobFetch(`/classes/MaterialChunk?where=${encodeURIComponent(chunkWhere)}&limit=100`);
+    if (chunks.results) {
+      for (const c of chunks.results) {
+        await bmobFetch(`/classes/MaterialChunk/${c.objectId}`, { method: 'DELETE' });
+      }
     }
   } catch(e) { console.error('云端删除材料失败:', e); }
 }
