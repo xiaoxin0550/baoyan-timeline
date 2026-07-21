@@ -2355,17 +2355,28 @@ function getLinksData() {
 // ===== 材料预览 =====
 function previewMaterial(id) {
   const mat = materialsLibrary.find(m => m.id === id);
-  if (!mat) return;
+  if (!mat) { console.warn('未找到材料:', id); return; }
   document.getElementById('previewTitle').textContent = mat.fileName;
   const content = document.getElementById('previewContent');
-  if (mat.type.startsWith('image/')) {
-    content.innerHTML = `<img src="${mat.data}" style="max-width:100%;max-height:60vh;border-radius:4px;" alt="">`;
+  const isImage = mat.type && mat.type.startsWith('image/');
+  const isPDF = mat.type === 'application/pdf';
+  const dataUrl = mat.data || '';
+
+  if (isImage && dataUrl.startsWith('data:image/')) {
+    content.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:60vh;border-radius:4px;" alt="${escHtml(mat.fileName)}" onerror="this.parentElement.innerHTML='<p style=color:var(--danger)>图片加载失败</p>'">`;
+  } else if (isPDF || dataUrl.startsWith('data:application/pdf')) {
+    content.innerHTML = `<div style="padding:20px;">
+      <iframe src="${dataUrl}" style="width:100%;height:60vh;border:1px solid var(--border);border-radius:8px;" title="PDF预览"></iframe>
+    </div>`;
+  } else if (dataUrl.startsWith('data:image/')) {
+    // type字段可能丢失，但从data URL可以判断是图片
+    content.innerHTML = `<img src="${dataUrl}" style="max-width:100%;max-height:60vh;border-radius:4px;" alt="${escHtml(mat.fileName)}" onerror="this.parentElement.innerHTML='<p style=color:var(--danger)>图片加载失败</p>'">`;
   } else {
     content.innerHTML = `<div style="padding:40px;background:#f9fafb;border-radius:8px;">
       <div style="font-size:48px;margin-bottom:12px;">📄</div>
       <p><strong>${escHtml(mat.fileName)}</strong></p>
-      <p style="color:var(--text-secondary);font-size:13px;">${mat.type} · ${mat.size < 1024*1024 ? (mat.size/1024).toFixed(0)+'KB' : (mat.size/(1024*1024)).toFixed(1)+'MB'}</p>
-      <a href="${mat.data}" download="${mat.fileName}" class="btn btn-sm" style="margin-top:8px;">下载文件</a>
+      <p style="color:var(--text-secondary);font-size:13px;">${mat.type || '未知类型'} · ${mat.size < 1024*1024 ? (mat.size/1024).toFixed(0)+'KB' : (mat.size/(1024*1024)).toFixed(1)+'MB'}</p>
+      <a href="${dataUrl}" download="${mat.fileName}" class="btn btn-sm" style="margin-top:8px;">下载文件</a>
     </div>`;
   }
   document.getElementById('previewOverlay').style.display = 'flex';
