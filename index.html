@@ -1005,7 +1005,7 @@ async function handleLogin() {
 }
 
 function handleLogout() {
-  if (confirm('退出登录后，本地数据将保留但不会同步到云端。确定退出？')) {
+  if (confirm('退出登录将清除当前浏览器的本地数据。确定退出？')) {
     sessionToken = '';
     currentUser = null;
     onAuthStateChanged(null);
@@ -1051,7 +1051,6 @@ async function loadCloudData() {
     console.log('开始加载云端数据, owner:', owner);
     const where = JSON.stringify({ owner: owner });
     const result = await bmobFetch(`/classes/ApplicationItem?where=${encodeURIComponent(where)}&limit=1000`);
-    console.log('云端数据返回:', result);
     const cloudItems = (result.results || []).map(r => ({
       id: r.localId || r.objectId, school: r.school, program: r.program, major: r.major,
       status: r.status, stages: r.stages, notes: r.notes,
@@ -1059,16 +1058,31 @@ async function loadCloudData() {
     }));
     console.log('云端项目数:', cloudItems.length);
 
-    const localItems = loadLocalData();
+    // 检查是否切换了账号：如果本地存储的上一个用户和当前用户不同，丢弃本地数据
+    const prevOwner = localStorage.getItem('baoyan_last_owner');
+    const accountChanged = prevOwner && prevOwner !== owner;
+
+    if (accountChanged) {
+      console.log('检测到账号切换，清除本地数据');
+      localStorage.removeItem(STORAGE_KEY);
+      materialsLibrary = [];
+      try { saveLocalMaterials(); } catch(e) {}
+    }
+
+    const localItems = accountChanged ? [] : loadLocalData();
     const cloudIds = new Set(cloudItems.map(i => i.id));
     const localOnly = localItems.filter(i => !cloudIds.has(i.id));
     console.log('本地项目数:', localItems.length, '仅本地有的:', localOnly.length);
 
-    for (const item of localOnly) {
-      await saveItemToCloud(item);
+    // 仅当没有切换账号时，才上传本地独有数据
+    if (!accountChanged) {
+      for (const item of localOnly) {
+        await saveItemToCloud(item);
+      }
     }
-    items = [...cloudItems, ...localOnly];
+    items = [...cloudItems, ...(accountChanged ? [] : localOnly)];
     saveLocalData(items);
+    localStorage.setItem('baoyan_last_owner', owner);
     console.log('同步完成, 总项目数:', items.length);
   } catch(e) {
     console.error('加载云端数据失败:', e);
