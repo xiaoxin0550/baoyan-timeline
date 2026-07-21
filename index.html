@@ -458,7 +458,7 @@ body {
 }
 .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
 
-.notes-cell { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.notes-cell { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; display: inline-block; }
 .notes-cell:hover { color: var(--primary); }
 
 /* ===== 材料管理 ===== */
@@ -696,13 +696,13 @@ body {
       <table>
         <thead>
           <tr>
+            <th>操作</th>
             <th>学校</th>
             <th>学院</th>
             <th>项目</th>
             <th>状态</th>
             <th>阶段 / 截止日期</th>
             <th>备注</th>
-            <th>操作</th>
           </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -1420,16 +1420,17 @@ function renderTable() {
     const moreCount = item.stages.length > 4 ? ` +${item.stages.length - 4}` : '';
 
     return `<tr class="${allDone ? 'row-expired' : ''}">
+      <td style="white-space:nowrap;">
+        <button class="btn btn-xs" onclick="openDetail('${item.id}')">查看</button>
+        <button class="btn btn-xs" onclick="openEditModal('${item.id}')">编辑</button>
+        <button class="btn btn-xs btn-danger" onclick="deleteItem('${item.id}')">删除</button>
+      </td>
       <td><strong>${escHtml(item.school)}</strong></td>
       <td>${escHtml(item.major || '-')}</td>
       <td>${escHtml(item.program)}${(item.links && item.links.length > 0) ? ' 🔗' : ''}</td>
       <td><span class="status-badge status-${item.status}">${STATUS_LABELS[item.status]}</span></td>
       <td>${stagesHtml}${moreCount}</td>
       <td><span class="notes-cell" onclick="openDetail('${item.id}')" title="${escHtml(item.notes || '点击查看详情')}">${escHtml(item.notes || '-')}</span></td>
-      <td>
-        <button class="btn btn-xs" onclick="openEditModal('${item.id}')">编辑</button>
-        <button class="btn btn-xs btn-danger" onclick="deleteItem('${item.id}')">删除</button>
-      </td>
     </tr>`;
   }).join('');
 }
