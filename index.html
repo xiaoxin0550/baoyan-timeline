@@ -1,0 +1,2095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推免申请时间节点管理</title>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.bmob.cn/bmob-5.0.1.min.js"></script>
+<style>
+:root {
+  --bg: #f5f6fa;
+  --card: #ffffff;
+  --primary: #3b6ff5;
+  --primary-light: #e8eeff;
+  --text: #1a1a2e;
+  --text-secondary: #6b7280;
+  --border: #e5e7eb;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #10b981;
+  --gray: #9ca3af;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ===== 顶部导航 ===== */
+.navbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+.navbar .logo {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+  white-space: nowrap;
+}
+.navbar .logo span { color: var(--text); font-weight: 500; margin-left: 4px; }
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-actions input[type="text"] {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  width: 200px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.nav-actions input[type="text"]:focus { border-color: var(--primary); }
+
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: all 0.15s;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn:hover { background: #f9fafb; border-color: #d1d5db; }
+.btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary:hover { background: #2563eb; }
+.btn-sm { padding: 4px 8px; font-size: 12px; }
+.btn-xs { padding: 2px 6px; font-size: 11px; border-radius: 4px; }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover { background: #fef2f2; }
+.btn-success { color: var(--success); border-color: var(--success); }
+
+/* ===== 视图切换标签 ===== */
+.view-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+.view-tab {
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.view-tab.active { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: var(--shadow); }
+
+/* ===== 筛选栏 ===== */
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  padding: 12px 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filter-bar select, .filter-bar input[type="date"] {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  outline: none;
+  background: var(--card);
+}
+
+/* ===== 主内容区 ===== */
+.main-content {
+  padding: 0 24px 80px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.view-container { display: none; }
+.view-container.active { display: block; }
+
+/* ===== 表格视图 ===== */
+.table-wrapper { overflow-x: auto; }
+.table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table-wrapper th, .table-wrapper td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table-wrapper th {
+  background: #f9fafb;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.table-wrapper tbody tr:hover { background: #f9fafb; }
+.table-wrapper tbody tr.row-expired { opacity: 0.5; background: #f9fafb; }
+
+.countdown-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 45px;
+  text-align: center;
+}
+.countdown-overdue { background: #f3f4f6; color: #9ca3af; }
+.countdown-urgent { background: #fef2f2; color: #dc2626; animation: pulse 1.5s infinite; }
+.countdown-warning { background: #fffbeb; color: #d97706; }
+.countdown-safe { background: #ecfdf5; color: #059669; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.status-unreleased { background: #f3f4f6; color: #9ca3af; }
+.status-unapplied { background: #fef3c7; color: #b45309; }
+.status-applied { background: #dbeafe; color: #2563eb; }
+.status-submitted { background: #e0e7ff; color: #4f46e5; }
+.status-waiting { background: #fef3c7; color: #d97706; }
+.status-admitted { background: #d1fae5; color: #059669; }
+.status-rejected { background: #fee2e2; color: #dc2626; }
+
+/* ===== 甘特图视图 ===== */
+.gantt-container {
+  overflow-x: auto;
+  position: relative;
+}
+.gantt-header {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 4px;
+}
+.gantt-label-col { min-width: 180px; flex-shrink: 0; padding: 8px 0; font-weight: 600; font-size: 13px; }
+.gantt-timeline-col { flex: 1; display: flex; min-width: 800px; }
+.gantt-month {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-left: 1px solid var(--border);
+  padding: 8px 0;
+}
+.gantt-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  min-height: 40px;
+}
+.gantt-row-label {
+  min-width: 180px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gantt-row-timeline {
+  flex: 1;
+  min-width: 800px;
+  position: relative;
+  height: 30px;
+}
+.gantt-bar {
+  position: absolute;
+  height: 18px;
+  border-radius: 4px;
+  top: 6px;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 4px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  transition: opacity 0.15s;
+}
+.gantt-bar:hover { opacity: 0.85; }
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--danger);
+  z-index: 10;
+}
+
+/* ===== 日历视图 ===== */
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.calendar-day-header {
+  background: #f9fafb;
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.calendar-cell {
+  min-height: 70px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 4px;
+  font-size: 11px;
+  position: relative;
+}
+.calendar-cell:nth-child(7n) { border-right: none; }
+.calendar-cell .day-num {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.calendar-cell.today { background: var(--primary-light); }
+.calendar-cell.other-month { opacity: 0.3; }
+.calendar-cell .day-event {
+  background: var(--primary);
+  color: #fff;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-size: 10px;
+  margin-bottom: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.calendar-cell .day-event.urgent { background: var(--danger); }
+.calendar-cell .day-event.warning { background: var(--warning); }
+
+/* ===== 统计视图 ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.stat-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.stat-card h3 {
+  font-size: 14px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+}
+.stat-number {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 120px; padding-top: 4px; }
+.bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
+.bar-fill {
+  width: 100%;
+  max-width: 50px;
+  background: var(--primary);
+  border-radius: 3px 3px 0 0;
+  transition: height 0.3s;
+  min-height: 2px;
+}
+.bar-label { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
+
+.urgent-list { list-style: none; }
+.urgent-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.urgent-list li:last-child { border-bottom: none; }
+
+.status-bar {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.status-segment { transition: width 0.3s; }
+.status-legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; }
+.status-legend span { display: inline-flex; align-items: center; gap: 3px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ===== 弹窗 ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s;
+}
+.modal {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.2s;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal h3 { margin-bottom: 16px; font-size: 17px; }
+.modal .form-group { margin-bottom: 12px; }
+.modal label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.modal input, .modal select, .modal textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  outline: none;
+}
+.modal textarea { resize: vertical; min-height: 60px; }
+.modal input:focus, .modal select:focus, .modal textarea:focus { border-color: var(--primary); }
+.modal .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+.stage-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.stage-row input { flex: 1; }
+.stage-row input[type="date"] { flex: 0 0 130px; }
+
+/* ===== 浮动按钮 ===== */
+.fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.15s;
+  z-index: 50;
+}
+.fab:hover { transform: scale(1.08); }
+
+/* ===== 详情弹窗 ===== */
+.detail-stage {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.detail-stage:last-child { border-bottom: none; }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+}
+.empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+.notes-cell { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.notes-cell:hover { color: var(--primary); }
+
+/* ===== 材料管理 ===== */
+.material-card {
+  width: 130px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  text-align: center;
+  position: relative;
+  background: var(--card);
+  transition: box-shadow 0.15s;
+}
+.material-card:hover { box-shadow: var(--shadow); }
+.material-card .mat-icon {
+  font-size: 32px;
+  margin-bottom: 4px;
+}
+.material-card .mat-name {
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.material-card .mat-size {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.material-card .mat-del {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--gray);
+  line-height: 1;
+}
+.material-card .mat-del:hover { color: var(--danger); }
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.checklist-item input[type="checkbox"] { width: auto; }
+.checklist-item .item-del { cursor: pointer; color: var(--gray); font-size: 14px; }
+.checklist-item .item-del:hover { color: var(--danger); }
+
+.pdf-select-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.pdf-select-item:hover { background: #f9fafb; }
+.pdf-select-item.selected { background: var(--primary-light); border-color: var(--primary); }
+.pdf-select-item .pdf-order {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  text-align: center;
+  line-height: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ===== 登录界面 ===== */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 32px;
+  width: 360px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.login-card h2 { margin-bottom: 4px; font-size: 20px; }
+.login-card .login-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 20px; }
+.login-card .form-group { margin-bottom: 12px; text-align: left; }
+.login-card label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.login-card input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; outline: none; }
+.login-card input:focus { border-color: var(--primary); }
+.login-card .login-error { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 18px; }
+.login-card .login-toggle { font-size: 12px; color: var(--primary); cursor: pointer; margin-top: 8px; }
+.login-card .login-toggle:hover { text-decoration: underline; }
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .navbar { padding: 0 12px; height: 50px; }
+  .navbar .logo { font-size: 15px; }
+  .nav-actions input[type="text"] { width: 120px; }
+  .filter-bar { padding: 8px 12px; gap: 6px; }
+  .main-content { padding: 0 8px 80px; }
+  .calendar-cell { min-height: 50px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== 登录界面 ===== -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <h2>保研时间线</h2>
+    <p class="login-sub" id="loginSub">登录以同步数据到云端</p>
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="loginEmail" placeholder="your@email.com">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="loginPassword" placeholder="至少6位密码">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button class="btn btn-primary" onclick="handleLogin()" style="width:100%;" id="loginBtn">登录</button>
+    <div class="login-toggle" id="loginToggle" onclick="toggleLoginMode()">没有账号？点击注册</div>
+  </div>
+</div>
+
+<!-- ===== 顶部导航 ===== -->
+<nav class="navbar">
+  <div class="logo">保研<span>时间线</span></div>
+  <div class="nav-actions">
+    <div class="view-tabs" id="viewTabs">
+      <button class="view-tab active" data-view="table">表格</button>
+      <button class="view-tab" data-view="gantt">时间线</button>
+      <button class="view-tab" data-view="calendar">日历</button>
+      <button class="view-tab" data-view="stats">统计</button>
+      <button class="view-tab" data-view="materials">材料</button>
+    </div>
+    <input type="text" id="searchInput" placeholder="搜索学校或专业...">
+    <span class="user-chip" id="userChip" style="display:none;"></span>
+    <button class="btn btn-sm" id="logoutBtn" onclick="handleLogout()" style="display:none;">退出</button>
+    <button class="btn" onclick="exportData()" title="导出 JSON">导出</button>
+    <button class="btn" onclick="document.getElementById('importFile').click()" title="导入 JSON">导入</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</nav>
+
+<!-- ===== 筛选栏 ===== -->
+<div class="filter-bar">
+  <select id="filterStatus" onchange="renderCurrentView()">
+    <option value="all">全部状态</option>
+    <option value="unreleased">院系未发布通知</option>
+    <option value="unapplied">已发布,未报名</option>
+    <option value="applied">已报名</option>
+    <option value="submitted">材料已提交</option>
+    <option value="waiting">等待复试</option>
+    <option value="admitted">已录取</option>
+    <option value="rejected">已拒绝</option>
+  </select>
+  <input type="date" id="filterDateFrom" onchange="renderCurrentView()" placeholder="日期从">
+  <input type="date" id="filterDateTo" onchange="renderCurrentView()" placeholder="日期至">
+  <select id="sortBy" onchange="renderCurrentView()">
+    <option value="deadline">按最近截止</option>
+    <option value="school">按学校名</option>
+    <option value="created">按创建时间</option>
+  </select>
+  <span style="font-size:12px;color:var(--text-secondary)" id="resultCount"></span>
+</div>
+
+<!-- ===== 主内容区 ===== -->
+<div class="main-content">
+
+  <!-- 表格视图 -->
+  <div class="view-container active" id="viewTable">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>学校</th>
+            <th>专业</th>
+            <th>项目</th>
+            <th>状态</th>
+            <th>阶段 / 截止日期</th>
+            <th>备注</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="tableEmpty" style="display:none">
+      <div class="empty-icon">📋</div>
+      <p>还没有添加任何申请项目</p>
+      <p style="font-size:12px;color:var(--text-secondary)">点击右下角 "+" 按钮开始添加</p>
+    </div>
+  </div>
+
+  <!-- 甘特图视图 -->
+  <div class="view-container" id="viewGantt">
+    <div class="gantt-container" id="ganttContent"></div>
+    <div class="empty-state" id="ganttEmpty" style="display:none">
+      <div class="empty-icon">📊</div>
+      <p>还没有数据可显示</p>
+    </div>
+  </div>
+
+  <!-- 日历视图 -->
+  <div class="view-container" id="viewCalendar">
+    <div class="calendar-header">
+      <button class="btn btn-sm" onclick="changeCalendarMonth(-1)">◀</button>
+      <span id="calendarTitle"></span>
+      <button class="btn btn-sm" onclick="changeCalendarMonth(1)">▶</button>
+      <button class="btn btn-sm" onclick="goToToday()">今天</button>
+    </div>
+    <div class="calendar-grid" id="calendarGrid"></div>
+  </div>
+
+  <!-- 统计视图 -->
+  <div class="view-container" id="viewStats">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>总览</h3>
+        <div class="stat-number" id="statTotal">0</div>
+        <p style="color:var(--text-secondary);font-size:13px;">申请项目总数</p>
+        <div style="margin-top:8px;font-size:13px;">
+          <span id="statPending">0</span> 个进行中 &nbsp; <span id="statAdmitted">0</span> 个已录取
+        </div>
+      </div>
+      <div class="stat-card">
+        <h3>状态分布</h3>
+        <div class="status-bar" id="statusBar"></div>
+        <div class="status-legend" id="statusLegend"></div>
+      </div>
+      <div class="stat-card">
+        <h3>按周申请密度</h3>
+        <div class="bar-chart" id="weeklyChart"></div>
+      </div>
+      <div class="stat-card">
+        <h3>按月申请密度</h3>
+        <div class="bar-chart" id="monthlyChart"></div>
+      </div>
+      <div class="stat-card">
+        <h3>Top 5 紧急事项</h3>
+        <ul class="urgent-list" id="urgentList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- 材料管理视图 -->
+  <div class="view-container" id="viewMaterials">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:300px;">
+        <div class="stat-card" style="margin-bottom:12px;">
+          <h3>材料库</h3>
+          <div style="margin-bottom:8px;">
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('materialFileInput').click()">+ 上传材料</button>
+            <input type="file" id="materialFileInput" accept="image/*,.pdf" style="display:none" onchange="uploadMaterial(event)" multiple>
+            <span style="font-size:11px;color:var(--text-secondary);margin-left:8px;">支持图片和PDF</span>
+          </div>
+          <div id="materialLibrary" style="display:flex;flex-wrap:wrap;gap:8px;">
+            <p style="font-size:13px;color:var(--text-secondary);width:100%;">材料库为空，请上传通用材料</p>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:300px;">
+        <div class="stat-card">
+          <h3>生成申请材料 PDF</h3>
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">勾选材料，用 ▲▼ 调整排序，一键生成合并 PDF</p>
+          <div id="pdfSelectList" style="max-height:200px;overflow-y:auto;margin-bottom:8px;"></div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-sm" onclick="movePdfItem(-1)" title="上移">▲</button>
+            <button class="btn btn-sm" onclick="movePdfItem(1)" title="下移">▼</button>
+            <button class="btn btn-primary btn-sm" onclick="generatePDF()">生成 PDF</button>
+            <span style="font-size:11px;color:var(--text-secondary)" id="pdfStatus"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== 添加/编辑弹窗 ===== -->
+<div id="modalOverlay" class="modal-overlay" style="display:none;" onclick="event.target===this && closeModal()">
+  <div class="modal">
+    <h3 id="modalTitle">添加申请项目</h3>
+    <div class="form-group">
+      <label>学校名称 *</label>
+      <input type="text" id="formSchool" placeholder="例：清华大学">
+    </div>
+    <div class="form-group">
+      <label>专业</label>
+      <input type="text" id="formMajor" placeholder="例：计算机科学与技术">
+    </div>
+    <div class="form-group">
+      <label>项目名称 *</label>
+      <input type="text" id="formProgram" placeholder="例：计算机系夏令营">
+    </div>
+    <div class="form-group">
+      <label>申请状态</label>
+      <select id="formStatus">
+        <option value="unreleased">院系未发布通知</option>
+        <option value="unapplied">已发布,未报名</option>
+        <option value="applied">已报名</option>
+        <option value="submitted">材料已提交</option>
+        <option value="waiting">等待复试</option>
+        <option value="admitted">已录取</option>
+        <option value="rejected">已拒绝</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>时间阶段</label>
+      <datalist id="stageNameList">
+        <option value="报名开始">
+        <option value="报名截止">
+        <option value="材料提交截止">
+        <option value="入营通知">
+        <option value="复试/参营">
+        <option value="录取公示">
+        <option value="确认录取">
+        <option value="集中审核">
+        <option value="面试">
+        <option value="笔试">
+        <option value="体检">
+        <option value="导师确认">
+        <option value="系统报名">
+        <option value="邮寄材料">
+        <option value="拟录取通知">
+      </datalist>
+      <div id="stagesContainer"></div>
+      <button class="btn btn-sm" onclick="addStage()" style="margin-top:4px;">+ 添加阶段</button>
+    </div>
+    <div class="form-group">
+      <label>备注</label>
+      <textarea id="formNotes" placeholder="申请链接、材料要求、账号信息等..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>申请材料清单</label>
+      <div id="checklistContainer"></div>
+      <button class="btn btn-sm" onclick="addChecklistItem()" style="margin-top:4px;">+ 添加材料项</button>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveItem()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 详情弹窗 ===== -->
+<div id="detailOverlay" class="modal-overlay" style="display:none;" onclick="event.target===this && closeDetail()">
+  <div class="modal" style="max-width:450px;">
+    <h3 id="detailTitle"></h3>
+    <div style="margin-bottom:8px;"><span class="status-badge" id="detailStatus"></span></div>
+    <div id="detailStages"></div>
+    <div style="margin-top:12px;font-size:13px;color:var(--text-secondary);">
+      <strong>备注：</strong><span id="detailNotes"></span>
+    </div>
+    <div style="margin-top:12px;font-size:13px;">
+      <strong>材料清单：</strong>
+      <div id="detailChecklist"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeDetail()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 浮动添加按钮 ===== -->
+<button class="fab" onclick="openAddModal()" title="添加项目">+</button>
+
+<script>
+// ===== Bmob 配置 =====
+// 在 Bmob 控制台 → 应用设置 → 应用密钥 获取
+const BMOB_CONFIG = {
+  applicationId: '838c4a7e97e4f64570309fd462f34f95',
+  restApiKey: '96b9411e801f4a8d01b255a924609fbe'
+};
+
+let cloudReady = false;
+let currentUser = null;
+
+try {
+  Bmob.initialize(BMOB_CONFIG.applicationId, BMOB_CONFIG.restApiKey);
+  cloudReady = true;
+} catch(e) {
+  console.warn('Bmob 未配置，使用本地模式');
+}
+
+// ===== 认证管理 =====
+let loginMode = 'login';
+
+function toggleLoginMode() {
+  loginMode = loginMode === 'login' ? 'register' : 'login';
+  document.getElementById('loginBtn').textContent = loginMode === 'login' ? '登录' : '注册';
+  document.getElementById('loginSub').textContent = loginMode === 'login' ? '登录以同步数据到云端' : '创建账号以同步数据到云端';
+  document.getElementById('loginToggle').textContent = loginMode === 'login' ? '没有账号？点击注册' : '已有账号？点击登录';
+  document.getElementById('loginError').textContent = '';
+}
+
+async function handleLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+
+  if (!email || !password) { errEl.textContent = '请填写邮箱和密码'; return; }
+  if (password.length < 6) { errEl.textContent = '密码至少6位'; return; }
+
+  try {
+    const btn = document.getElementById('loginBtn');
+    btn.disabled = true; btn.textContent = '处理中...';
+    if (loginMode === 'register') {
+      const user = new Bmob.User();
+      user.set('username', email);
+      user.set('password', password);
+      user.set('email', email);
+      await user.signUp();
+    } else {
+      await Bmob.User.login(email, password);
+    }
+    onAuthStateChanged(Bmob.User.current());
+  } catch(e) {
+    let msg = e.message || '登录失败';
+    if (msg.includes('already taken')) msg = '该邮箱已注册';
+    else if (msg.includes('login failed')) msg = '邮箱或密码错误';
+    else if (msg.includes('not found')) msg = '账号不存在';
+    errEl.textContent = msg;
+    document.getElementById('loginBtn').disabled = false;
+    document.getElementById('loginBtn').textContent = loginMode === 'login' ? '登录' : '注册';
+  }
+}
+
+function handleLogout() {
+  if (confirm('退出登录后，本地数据将保留但不会同步到云端。确定退出？')) {
+    Bmob.User.logout();
+    onAuthStateChanged(null);
+  }
+}
+
+function onAuthStateChanged(user) {
+  currentUser = user;
+  const overlay = document.getElementById('loginOverlay');
+  const chip = document.getElementById('userChip');
+  const logout = document.getElementById('logoutBtn');
+
+  if (user) {
+    overlay.style.display = 'none';
+    chip.style.display = 'inline-flex';
+    const email = user.get('email');
+    chip.textContent = email;
+    chip.title = email;
+    logout.style.display = 'inline-flex';
+    loadCloudData();
+  } else {
+    overlay.style.display = 'flex';
+    chip.style.display = 'none';
+    logout.style.display = 'none';
+    currentUser = null;
+  }
+}
+
+// ===== Bmob 数据同步 =====
+const ApplicationItem = Bmob.Object.extend('ApplicationItem');
+const MaterialMeta = Bmob.Object.extend('MaterialMeta');
+
+async function loadCloudData() {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const username = currentUser.get('username');
+    const query = new Bmob.Query(ApplicationItem);
+    query.equalTo('owner', username);
+    query.limit(1000);
+    const results = await query.find();
+    const cloudItems = results.map(r => {
+      const attrs = r.attributes;
+      return { id: r.id, school: attrs.school, program: attrs.program, major: attrs.major,
+        status: attrs.status, stages: attrs.stages, notes: attrs.notes,
+        checklist: attrs.checklist, createdAt: attrs.createdAt };
+    });
+
+    const localItems = loadLocalData();
+    const cloudIds = new Set(cloudItems.map(i => i.id));
+    const localOnly = localItems.filter(i => !cloudIds.has(i.id));
+
+    for (const item of localOnly) {
+      await saveItemToCloud(item);
+    }
+    items = [...cloudItems, ...localOnly];
+    saveLocalData(items);
+  } catch(e) {
+    console.error('加载云端数据失败:', e);
+    items = loadLocalData();
+  }
+  renderCurrentView();
+}
+
+async function saveItemToCloud(item) {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const query = new Bmob.Query(ApplicationItem);
+    query.equalTo('objectId', item.id);
+    const existing = await query.first();
+    const obj = existing || new ApplicationItem();
+    obj.set('objectId', item.id);
+    obj.set('school', item.school);
+    obj.set('program', item.program);
+    obj.set('major', item.major || '');
+    obj.set('status', item.status);
+    obj.set('stages', item.stages);
+    obj.set('notes', item.notes || '');
+    obj.set('checklist', item.checklist || []);
+    obj.set('createdAt', item.createdAt);
+    obj.set('owner', currentUser.get('username'));
+    await obj.save();
+  } catch(e) { console.error('保存到云端失败:', e); }
+}
+
+async function deleteItemFromCloud(id) {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const query = new Bmob.Query(ApplicationItem);
+    query.equalTo('objectId', id);
+    const obj = await query.first();
+    if (obj) await obj.destroy();
+  } catch(e) { console.error('云端删除失败:', e); }
+}
+
+async function saveAllToCloud() {
+  if (!currentUser || !cloudReady) return;
+  for (const item of items) {
+    await saveItemToCloud(item);
+  }
+}
+
+// ===== Bmob 材料管理 =====
+async function loadCloudMaterials() {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const username = currentUser.get('username');
+    const query = new Bmob.Query(MaterialMeta);
+    query.equalTo('owner', username);
+    query.limit(500);
+    const results = await query.find();
+    const cloudMats = [];
+    const localMatsArr = await loadLocalMaterials();
+    const localIds = new Set(localMatsArr.map(m => m.id));
+
+    for (const r of results) {
+      const attrs = r.attributes;
+      const meta = { id: r.id, name: attrs.name, fileName: attrs.fileName,
+        type: attrs.type, size: attrs.size, uploadedAt: attrs.uploadedAt, fileUrl: attrs.fileUrl };
+      if (!localIds.has(meta.id)) {
+        meta._needDownload = true;
+      }
+      cloudMats.push(meta);
+    }
+
+    // 下载云端独有的文件内容
+    for (const mat of cloudMats) {
+      if (mat._needDownload && mat.fileUrl) {
+        try {
+          const resp = await fetch(mat.fileUrl);
+          mat.data = await resp.text();
+          delete mat._needDownload;
+        } catch(e) {
+          console.error('下载材料失败:', mat.name, e);
+        }
+      }
+    }
+
+    // 上传本地独有的材料
+    for (const mat of localMatsArr) {
+      if (!cloudMats.some(m => m.id === mat.id)) {
+        await saveMaterialToCloud(mat);
+        cloudMats.push({ id: mat.id, name: mat.name, fileName: mat.fileName, type: mat.type, size: mat.size, uploadedAt: mat.uploadedAt });
+      }
+    }
+
+    materialsLibrary = [...cloudMats.filter(m => !m._needDownload), ...localMatsArr.filter(m => !cloudMats.some(cm => cm.id === m.id))];
+    const seen = new Set();
+    materialsLibrary = materialsLibrary.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+    saveLocalMaterials();
+  } catch(e) {
+    console.error('加载云端材料失败:', e);
+    materialsLibrary = await loadLocalMaterials();
+  }
+}
+
+async function saveMaterialToCloud(mat) {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const base64 = mat.data.split(',')[1];
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mat.type });
+    const file = new Bmob.File(mat.fileName, blob);
+    await file.save();
+
+    // 保存元数据
+    const metaObj = new MaterialMeta();
+    metaObj.set('objectId', mat.id);
+    metaObj.set('name', mat.name);
+    metaObj.set('fileName', mat.fileName);
+    metaObj.set('type', mat.type);
+    metaObj.set('size', mat.size);
+    metaObj.set('uploadedAt', mat.uploadedAt);
+    metaObj.set('fileUrl', file.url());
+    metaObj.set('owner', currentUser.get('username'));
+    await metaObj.save();
+  } catch(e) { console.error('上传材料到云端失败:', e); throw e; }
+}
+
+async function deleteMaterialFromCloud(id) {
+  if (!currentUser || !cloudReady) return;
+  try {
+    const query = new Bmob.Query(MaterialMeta);
+    query.equalTo('objectId', id);
+    const metaObj = await query.first();
+    if (metaObj) {
+      const fileUrl = metaObj.get('fileUrl');
+      if (fileUrl) {
+        try {
+          const file = new Bmob.File('', fileUrl);
+          await file.destroy();
+        } catch(e) { /* 文件可能已删除 */ }
+      }
+      await metaObj.destroy();
+    }
+  } catch(e) { console.error('云端删除材料失败:', e); }
+}
+
+// ===== 本地存储（离线缓存） =====
+const STORAGE_KEY = 'baoyan_timeline_data';
+let items = [];
+let currentView = 'table';
+let editingId = null;
+let calendarYear, calendarMonth;
+
+function loadLocalData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveLocalData(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data || items)); }
+  catch(e) { /* 静默失败 */ }
+}
+
+function loadData() {
+  items = loadLocalData();
+}
+function saveData() {
+  saveLocalData();
+  if (currentUser && cloudReady) saveAllToCloud();
+}
+
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function getNextDeadline(stages) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  let nearest = null;
+  for (const s of stages) {
+    if (s.done || !s.date) continue;
+    const d = new Date(s.date + 'T00:00:00');
+    if (d >= today && (!nearest || d < nearest)) nearest = d;
+  }
+  return nearest;
+}
+
+function getDaysUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.ceil((target - today) / (1000*60*60*24));
+}
+
+function getCountdownClass(days) {
+  if (days === null) return '';
+  if (days < 0) return 'countdown-overdue';
+  if (days <= 3) return 'countdown-urgent';
+  if (days <= 7) return 'countdown-warning';
+  return 'countdown-safe';
+}
+
+function getCountdownText(days) {
+  if (days === null) return '-';
+  if (days < 0) return `过期${-days}天`;
+  if (days === 0) return '今天截止';
+  return `${days}天`;
+}
+
+const STATUS_LABELS = {
+  unreleased: '院系未发布通知', unapplied: '已发布,未报名',
+  applied: '已报名', submitted: '材料已提交',
+  waiting: '等待复试', admitted: '已录取', rejected: '已拒绝'
+};
+
+// ===== 筛选和排序 =====
+function getFilteredItems() {
+  const status = document.getElementById('filterStatus').value;
+  const from = document.getElementById('filterDateFrom').value;
+  const to = document.getElementById('filterDateTo').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const sortBy = document.getElementById('sortBy').value;
+
+  let filtered = [...items];
+
+  if (status !== 'all') filtered = filtered.filter(i => i.status === status);
+  if (search) filtered = filtered.filter(i =>
+    i.school.toLowerCase().includes(search) || i.program.toLowerCase().includes(search) || i.major.toLowerCase().includes(search)
+  );
+  if (from || to) {
+    filtered = filtered.filter(i =>
+      i.stages.some(s => {
+        if (!s.date) return false;
+        if (from && s.date < from) return false;
+        if (to && s.date > to) return false;
+        return true;
+      })
+    );
+  }
+
+  if (sortBy === 'deadline') {
+    filtered.sort((a, b) => {
+      const da = getNextDeadline(a.stages);
+      const db = getNextDeadline(b.stages);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da - db;
+    });
+  } else if (sortBy === 'school') {
+    filtered.sort((a, b) => a.school.localeCompare(b.school, 'zh'));
+  } else if (sortBy === 'created') {
+    filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+
+  return filtered;
+}
+
+function isAllStagesDone(item) {
+  return item.stages.length > 0 && item.stages.every(s => s.done || !s.date);
+}
+
+// ===== 表格视图 =====
+function renderTable() {
+  const filtered = getFilteredItems();
+  const tbody = document.getElementById('tableBody');
+  const empty = document.getElementById('tableEmpty');
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    document.getElementById('resultCount').textContent = '共 0 条';
+    return;
+  }
+  empty.style.display = 'none';
+  document.getElementById('resultCount').textContent = `共 ${filtered.length} 条`;
+
+  tbody.innerHTML = filtered.map(item => {
+    const allDone = isAllStagesDone(item);
+    const nearestStage = item.stages.filter(s => !s.done && s.date).sort((a,b) => a.date.localeCompare(b.date))[0];
+    const days = nearestStage ? getDaysUntil(nearestStage.date) : null;
+
+    const stagesHtml = item.stages.slice(0, 4).map(s => {
+      const d = getDaysUntil(s.date);
+      return `<span style="font-size:11px;margin-right:4px;" title="${s.name}: ${s.date || '无日期'} - ${s.done ? '已完成' : d !== null ? getCountdownText(d) : '无截止'}">
+        <span style="color:${s.done ? '#9ca3af' : '#6b7280'}" title="${s.name}">${s.name}</span>
+        <span class="countdown-badge ${s.done ? 'countdown-overdue' : getCountdownClass(d)}">${s.done ? '✓' : getCountdownText(d)}</span>
+      </span>`;
+    }).join('');
+
+    const moreCount = item.stages.length > 4 ? ` +${item.stages.length - 4}` : '';
+
+    return `<tr class="${allDone ? 'row-expired' : ''}">
+      <td><strong>${escHtml(item.school)}</strong></td>
+      <td>${escHtml(item.major || '-')}</td>
+      <td>${escHtml(item.program)}</td>
+      <td><span class="status-badge status-${item.status}">${STATUS_LABELS[item.status]}</span></td>
+      <td>${stagesHtml}${moreCount}</td>
+      <td><span class="notes-cell" onclick="openDetail('${item.id}')" title="${escHtml(item.notes || '点击查看详情')}">${escHtml(item.notes || '-')}</span></td>
+      <td>
+        <button class="btn btn-xs" onclick="openEditModal('${item.id}')">编辑</button>
+        <button class="btn btn-xs btn-danger" onclick="deleteItem('${item.id}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ===== 甘特图视图 =====
+function renderGantt() {
+  const filtered = getFilteredItems();
+  const container = document.getElementById('ganttContent');
+  const empty = document.getElementById('ganttEmpty');
+
+  if (filtered.length === 0) {
+    container.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // 确定时间范围
+  let allDates = [];
+  filtered.forEach(item => item.stages.forEach(s => { if (s.date) allDates.push(new Date(s.date+'T00:00:00')); }));
+  if (allDates.length === 0) { container.innerHTML = '<p style="text-align:center;padding:20px;color:var(--text-secondary)">没有日期数据</p>'; return; }
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  allDates.push(today);
+  allDates.sort((a,b) => a-b);
+  const minDate = new Date(allDates[0].getFullYear(), allDates[0].getMonth(), 1);
+  const maxDate = new Date(allDates[allDates.length-1].getFullYear(), allDates[allDates.length-1].getMonth() + 1, 0);
+  const totalDays = Math.ceil((maxDate - minDate) / (1000*60*60*24)) + 1;
+
+  // 月份头
+  let months = [];
+  let cursor = new Date(minDate);
+  while (cursor <= maxDate) {
+    months.push({ year: cursor.getFullYear(), month: cursor.getMonth(), label: `${cursor.getFullYear()}年${cursor.getMonth()+1}月` });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  const monthHeaderHtml = months.map(m => {
+    const daysInMonth = new Date(m.year, m.month+1, 0).getDate();
+    return `<div class="gantt-month" style="flex:${daysInMonth}">${m.label}</div>`;
+  }).join('');
+
+  const colors = ['#3b6ff5','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4','#84cc16','#f97316','#6366f1'];
+
+  const rowsHtml = filtered.map((item, idx) => {
+    const barsHtml = item.stages.filter(s => s.date).map((s, si) => {
+      const d = new Date(s.date+'T00:00:00');
+      const offset = Math.ceil((d - minDate) / (1000*60*60*24));
+      const leftPct = (offset / totalDays) * 100;
+      const color = colors[si % colors.length];
+      return `<div class="gantt-bar" style="left:${leftPct}%;background:${s.done ? '#d1d5db' : color};color:${s.done ? '#9ca3af' : '#fff'};width:auto;padding:0 6px;" title="${s.name}: ${s.date}${s.done ? ' (已完成)' : ''}">
+        ${s.name} ${s.date}
+      </div>`;
+    }).join('');
+
+    const todayOffset = Math.ceil((today - minDate) / (1000*60*60*24));
+    const todayPct = (todayOffset / totalDays) * 100;
+
+    return `<div class="gantt-row">
+      <div class="gantt-row-label" title="${item.school} - ${item.program}">${item.school} · ${item.program}</div>
+      <div class="gantt-row-timeline">
+        ${barsHtml}
+        <div class="gantt-today-line" style="left:${todayPct}%" title="今天"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="gantt-header">
+      <div class="gantt-label-col">学校 · 项目</div>
+      <div class="gantt-timeline-col">${monthHeaderHtml}</div>
+    </div>
+    ${rowsHtml}
+  `;
+}
+
+// ===== 日历视图 =====
+function renderCalendar() {
+  const filtered = getFilteredItems();
+  const grid = document.getElementById('calendarGrid');
+  const title = document.getElementById('calendarTitle');
+
+  title.textContent = `${calendarYear}年 ${calendarMonth + 1}月`;
+
+  // 建立日期到事件的映射
+  const dateMap = {};
+  filtered.forEach(item => {
+    item.stages.forEach(s => {
+      if (!s.date) return;
+      if (!dateMap[s.date]) dateMap[s.date] = [];
+      const days = getDaysUntil(s.date);
+      dateMap[s.date].push({ school: item.school, stage: s.name, done: s.done, days, id: item.id });
+    });
+  });
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const firstDay = new Date(calendarYear, calendarMonth, 1);
+  const lastDay = new Date(calendarYear, calendarMonth + 1, 0);
+  const startDayOfWeek = firstDay.getDay(); // 0=Sun
+
+  const dayHeaders = ['日','一','二','三','四','五','六'];
+  let html = dayHeaders.map(d => `<div class="calendar-day-header">${d}</div>`).join('');
+
+  // 上个月填充
+  const prevLastDay = new Date(calendarYear, calendarMonth, 0).getDate();
+  for (let i = startDayOfWeek - 1; i >= 0; i--) {
+    const d = prevLastDay - i;
+    html += `<div class="calendar-cell other-month"><div class="day-num">${d}</div></div>`;
+  }
+
+  // 本月
+  for (let d = 1; d <= lastDay.getDate(); d++) {
+    const dateStr = `${calendarYear}-${String(calendarMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const events = dateMap[dateStr] || [];
+    const isToday = dateStr === todayStr;
+
+    let eventHtml = '';
+    if (events.length > 0) {
+      eventHtml = events.slice(0, 3).map(e => {
+        let cls = 'day-event';
+        if (!e.done && e.days !== null && e.days <= 3) cls += ' urgent';
+        else if (!e.done && e.days !== null && e.days <= 7) cls += ' warning';
+        return `<div class="${cls}" onclick="openDetail('${e.id}')" title="${e.school}: ${e.stage}">${e.school.slice(0,5)} ${e.stage}</div>`;
+      }).join('');
+      if (events.length > 3) eventHtml += `<div style="font-size:10px;color:var(--text-secondary)">+${events.length-3} 更多</div>`;
+    }
+
+    html += `<div class="calendar-cell${isToday ? ' today' : ''}">
+      <div class="day-num">${d}${isToday ? ' 今天' : ''}</div>
+      ${eventHtml}
+    </div>`;
+  }
+
+  // 下个月填充
+  const remaining = 7 - (html.split('</div>').length - 1) % 7;
+  if (remaining < 7) {
+    for (let d = 1; d <= remaining; d++) {
+       html += `<div class="calendar-cell other-month"><div class="day-num">${d}</div></div>`;
+    }
+  }
+
+  grid.innerHTML = html;
+}
+
+function changeCalendarMonth(delta) {
+  calendarMonth += delta;
+  if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+  if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+  renderCalendar();
+}
+
+function goToToday() {
+  const now = new Date();
+  calendarYear = now.getFullYear();
+  calendarMonth = now.getMonth();
+  renderCalendar();
+}
+
+// ===== 统计视图 =====
+function renderStats() {
+  const filtered = getFilteredItems();
+
+  // 总数
+  document.getElementById('statTotal').textContent = items.length;
+  const pending = items.filter(i => i.status !== 'admitted' && i.status !== 'rejected').length;
+  const admitted = items.filter(i => i.status === 'admitted').length;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statAdmitted').textContent = admitted;
+
+  // 状态分布
+  const statusCounts = { unreleased:0, unapplied:0, applied:0, submitted:0, waiting:0, admitted:0, rejected:0 };
+  items.forEach(i => { if (statusCounts[i.status] !== undefined) statusCounts[i.status]++; });
+  const total = items.length || 1;
+  const statusColors = { unreleased:'#e5e7eb', unapplied:'#fde68a', applied:'#93c5fd', submitted:'#a5b4fc', waiting:'#fcd34d', admitted:'#6ee7b7', rejected:'#fca5a5' };
+  document.getElementById('statusBar').innerHTML = Object.entries(statusCounts).map(([k,v]) =>
+    `<div class="status-segment" style="width:${(v/total)*100}%;background:${statusColors[k]}"></div>`
+  ).join('');
+  document.getElementById('statusLegend').innerHTML = Object.entries(statusCounts).map(([k,v]) =>
+    `<span><span class="status-dot" style="background:${statusColors[k]}"></span> ${STATUS_LABELS[k]} (${v})</span>`
+  ).join('');
+
+  // 按月统计
+  const monthCount = {};
+  items.forEach(item => {
+    item.stages.forEach(s => {
+      if (!s.date) return;
+      const m = s.date.slice(0, 7); // "2026-06"
+      monthCount[m] = (monthCount[m] || 0) + 1;
+    });
+  });
+  const monthEntries = Object.entries(monthCount).sort();
+  document.getElementById('monthlyChart').innerHTML = monthEntries.length === 0
+    ? '<p style="font-size:13px;color:var(--text-secondary)">暂无数据</p>'
+    : monthEntries.map(([m, c]) => {
+        const max = Math.max(...Object.values(monthCount));
+        return `<div class="bar-item"><div class="bar-fill" style="height:${(c/max)*100}%" title="${m}: ${c}个阶段"></div><div class="bar-label">${m.slice(5)}月</div></div>`;
+      }).join('');
+
+  // 按周统计（近3个月）
+  const weekCount = {};
+  const now = new Date();
+  items.forEach(item => {
+    item.stages.forEach(s => {
+      if (!s.date) return;
+      const d = new Date(s.date+'T00:00:00');
+      const diffWeeks = Math.floor((now - d) / (1000*60*60*24*7));
+      if (diffWeeks >= -12 && diffWeeks <= 4) {
+        const key = diffWeeks === 0 ? '本周' : diffWeeks < 0 ? `${-diffWeeks}周后` : `${diffWeeks}周前`;
+        weekCount[key] = (weekCount[key] || 0) + 1;
+      }
+    });
+  });
+  // 排序 week labels
+  const weekOrder = [];
+  for (let i = 4; i >= 1; i--) weekOrder.push(`${i}周前`);
+  weekOrder.push('本周');
+  for (let i = 1; i <= 12; i++) weekOrder.push(`${i}周后`);
+  const weekMax = Math.max(...Object.values(weekCount), 1);
+  document.getElementById('weeklyChart').innerHTML = weekOrder.filter(k => weekCount[k] !== undefined).length === 0
+    ? '<p style="font-size:13px;color:var(--text-secondary)">暂无数据</p>'
+    : weekOrder.filter(k => weekCount[k] !== undefined).map(k => {
+        return `<div class="bar-item"><div class="bar-fill" style="height:${(weekCount[k]/weekMax)*100}%" title="${k}: ${weekCount[k]}个阶段"></div><div class="bar-label">${k}</div></div>`;
+      }).join('');
+
+  // Top 5 紧急
+  const urgent = [];
+  items.forEach(item => {
+    item.stages.forEach(s => {
+      if (s.done || !s.date) return;
+      const days = getDaysUntil(s.date);
+      if (days !== null) urgent.push({ ...s, school: item.school, program: item.program, days, id: item.id });
+    });
+  });
+  urgent.sort((a, b) => a.days - b.days);
+  const top5 = urgent.filter(u => u.days >= -7).slice(0, 5);
+  document.getElementById('urgentList').innerHTML = top5.length === 0
+    ? '<li style="color:var(--text-secondary)">暂无紧急事项</li>'
+    : top5.map(u => `<li>
+        <span><strong>${escHtml(u.school)}</strong> · ${escHtml(u.stage)}</span>
+        <span class="countdown-badge ${getCountdownClass(u.days)}">${getCountdownText(u.days)}</span>
+      </li>`).join('');
+}
+
+// ===== 弹窗逻辑 =====
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '添加申请项目';
+  document.getElementById('formSchool').value = '';
+  document.getElementById('formMajor').value = '';
+  document.getElementById('formProgram').value = '';
+  document.getElementById('formStatus').value = 'unreleased';
+  document.getElementById('formNotes').value = '';
+  buildStageInputs([
+    { name: '报名截止', date: '' },
+    { name: '材料提交截止', date: '' },
+    { name: '入营通知', date: '' },
+    { name: '复试/参营', date: '' },
+    { name: '录取公示', date: '' },
+  ]);
+  document.getElementById('checklistContainer').innerHTML = '';
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+
+function openEditModal(id) {
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = '编辑申请项目';
+  document.getElementById('formSchool').value = item.school;
+  document.getElementById('formMajor').value = item.major || '';
+  document.getElementById('formProgram').value = item.program;
+  document.getElementById('formStatus').value = item.status;
+  document.getElementById('formNotes').value = item.notes || '';
+  buildStageInputs(item.stages);
+  buildChecklistInputs(item.checklist || []);
+  document.getElementById('modalOverlay').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').style.display = 'none';
+  editingId = null;
+}
+
+function buildStageInputs(stages) {
+  const container = document.getElementById('stagesContainer');
+  container.innerHTML = stages.map((s, i) => `
+    <div class="stage-row">
+      <input type="text" class="stage-name" list="stageNameList" value="${escHtml(s.name)}" placeholder="阶段名称">
+      <input type="date" class="stage-date" value="${s.date || ''}">
+      <label style="font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">
+        <input type="checkbox" class="stage-done" ${s.done ? 'checked' : ''}> 完成
+      </label>
+      <button class="btn btn-xs btn-danger" onclick="this.closest('.stage-row').remove()">✕</button>
+    </div>
+  `).join('');
+}
+
+function addStage() {
+  const container = document.getElementById('stagesContainer');
+  const row = document.createElement('div');
+  row.className = 'stage-row';
+  row.innerHTML = `
+    <input type="text" class="stage-name" list="stageNameList" value="" placeholder="阶段名称">
+    <input type="date" class="stage-date" value="">
+    <label style="font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:2px;">
+      <input type="checkbox" class="stage-done"> 完成
+    </label>
+    <button class="btn btn-xs btn-danger" onclick="this.closest('.stage-row').remove()">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function saveItem() {
+  const school = document.getElementById('formSchool').value.trim();
+  const program = document.getElementById('formProgram').value.trim();
+  if (!school || !program) { alert('请填写学校名称和项目名称'); return; }
+
+  const stageRows = document.querySelectorAll('#stagesContainer .stage-row');
+  const stages = [];
+  stageRows.forEach(row => {
+    const name = row.querySelector('.stage-name').value.trim();
+    const date = row.querySelector('.stage-date').value;
+    const done = row.querySelector('.stage-done').checked;
+    if (name) stages.push({ name, date, done });
+  });
+
+  const data = {
+    school,
+    major: document.getElementById('formMajor').value.trim(),
+    program,
+    status: document.getElementById('formStatus').value,
+    stages,
+    notes: document.getElementById('formNotes').value.trim(),
+    checklist: getChecklistData(),
+    createdAt: editingId ? (items.find(i => i.id === editingId)?.createdAt || new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10)
+  };
+
+  if (editingId) {
+    const idx = items.findIndex(i => i.id === editingId);
+    if (idx !== -1) { data.id = editingId; items[idx] = data; }
+  } else {
+    data.id = generateId();
+    items.push(data);
+  }
+
+  saveData();
+  closeModal();
+  renderCurrentView();
+}
+
+function deleteItem(id) {
+  if (!confirm('确定要删除这个申请项目吗？此操作不可恢复。')) return;
+  items = items.filter(i => i.id !== id);
+  saveData();
+  deleteItemFromCloud(id);
+  renderCurrentView();
+}
+
+// ===== 详情弹窗 =====
+function openDetail(id) {
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  document.getElementById('detailTitle').textContent = `${item.school} - ${item.program}`;
+  document.getElementById('detailStatus').textContent = STATUS_LABELS[item.status];
+  document.getElementById('detailStatus').className = `status-badge status-${item.status}`;
+  document.getElementById('detailNotes').textContent = item.notes || '无';
+  document.getElementById('detailStages').innerHTML = item.stages.map(s => {
+    const days = getDaysUntil(s.date);
+    return `<div class="detail-stage">
+      <span>${escHtml(s.name)}</span>
+      <span>
+        ${s.date ? s.date : '未设置日期'}
+        ${s.done ? '<span style="color:var(--success);margin-left:4px;">✓ 已完成</span>'
+          : days !== null ? `<span class="countdown-badge ${getCountdownClass(days)}">${getCountdownText(days)}</span>` : ''}
+      </span>
+    </div>`;
+  }).join('');
+  const checklist = item.checklist || [];
+  document.getElementById('detailChecklist').innerHTML = checklist.length === 0
+    ? '<span style="color:var(--text-secondary)">无</span>'
+    : checklist.map(c => `<div style="padding:2px 0;">
+        <span style="cursor:pointer;${c.done?'color:var(--success);':''}">${c.done ? '✅' : '⬜'} ${escHtml(c.name)}</span>
+      </div>`).join('');
+  document.getElementById('detailOverlay').style.display = 'flex';
+}
+
+function closeDetail() { document.getElementById('detailOverlay').style.display = 'none'; }
+
+// ===== 导入导出 =====
+function exportData() {
+  const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `baoyan-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data)) throw new Error('格式错误');
+      if (!confirm(`即将导入 ${data.length} 条记录，是否覆盖现有数据？\n\n选择"取消"将合并数据。`)) {
+        // 合并：追加不重复 id 的数据
+        const existingIds = new Set(items.map(i => i.id));
+        const newItems = data.filter(d => !existingIds.has(d.id));
+        items = [...items, ...newItems];
+      } else {
+        items = data;
+      }
+      saveData();
+      renderCurrentView();
+      alert('导入成功！');
+    } catch {
+      alert('导入失败：文件格式不正确，请检查 JSON 文件。');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ===== 辅助函数 =====
+function escHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ===== 材料管理（IndexedDB 存储，支持大文件） =====
+const DB_NAME = 'baoyan_materials_db';
+const DB_VERSION = 1;
+let materialsLibrary = [];
+let materialsDB = null;
+
+// 本地 IndexedDB 操作（作为离线缓存）
+function loadLocalMaterials() {
+  return new Promise((resolve) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = function(e) {
+      if (!e.target.result.objectStoreNames.contains('materials')) {
+        e.target.result.createObjectStore('materials', { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = function(e) {
+      const db = e.target.result;
+      const tx = db.transaction('materials', 'readonly');
+      const store = tx.objectStore('materials');
+      const getReq = store.getAll();
+      getReq.onsuccess = () => resolve(getReq.result || []);
+      getReq.onerror = () => resolve([]);
+      materialsDB = db;
+    };
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function saveLocalMaterials() {
+  if (!materialsDB) {
+    await new Promise((resolve) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = function(e) {
+        if (!e.target.result.objectStoreNames.contains('materials')) {
+          e.target.result.createObjectStore('materials', { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = function(e) { materialsDB = e.target.result; resolve(); };
+    });
+  }
+  const tx = materialsDB.transaction('materials', 'readwrite');
+  const store = tx.objectStore('materials');
+  store.clear();
+  for (const mat of materialsLibrary) {
+    store.put(mat);
+  }
+  return new Promise((resolve) => { tx.oncomplete = resolve; });
+}
+
+async function loadMaterials() {
+  // 先从本地加载
+  const localMats = await loadLocalMaterials();
+  materialsLibrary = localMats;
+  // 如果已登录，从云端加载并合并
+  if (currentUser && cloudReady) {
+    await loadCloudMaterials();
+  }
+}
+
+async function saveMaterialItem(mat) {
+  // 保存到本地 IndexedDB
+  try {
+    if (!materialsDB) await loadLocalMaterials();
+    const tx = materialsDB.transaction('materials', 'readwrite');
+    tx.objectStore('materials').put(mat);
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+  } catch(e) { console.error('本地保存材料失败:', e); }
+  // 同步到云端
+  if (currentUser && cloudReady) {
+    try { await saveMaterialToCloud(mat); } catch(e) { /* 云端保存失败不影响本地 */ }
+  }
+}
+
+async function deleteMaterialFromDB(id) {
+  // 从本地删除
+  try {
+    if (!materialsDB) await loadLocalMaterials();
+    const tx = materialsDB.transaction('materials', 'readwrite');
+    tx.objectStore('materials').delete(id);
+    await new Promise((resolve) => { tx.oncomplete = resolve; });
+  } catch(e) { console.error('本地删除材料失败:', e); }
+  // 从云端删除
+  if (currentUser && cloudReady) {
+    deleteMaterialFromCloud(id);
+  }
+}
+
+function uploadMaterial(event) {
+  const files = event.target.files;
+  if (!files.length) return;
+  const total = files.length;
+  let completed = 0;
+  const errors = [];
+  function checkDone() {
+    completed++;
+    if (completed >= total) {
+      if (errors.length) alert('以下文件上传失败：\n' + errors.join('\n'));
+      renderMaterials();
+    }
+  }
+  Array.from(files).forEach(file => {
+    if (file.size > 20 * 1024 * 1024) {
+      errors.push(`${file.name} — 超过20MB限制`);
+      checkDone();
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async function() {
+      const mat = {
+        id: generateId(),
+        name: file.name.replace(/\.[^.]+$/, ''),
+        fileName: file.name,
+        type: file.type,
+        data: reader.result,
+        size: file.size,
+        uploadedAt: new Date().toISOString().slice(0,10)
+      };
+      try {
+        await saveMaterialItem(mat);
+        materialsLibrary.push(mat);
+      } catch(e) {
+        errors.push(`${file.name} — 存储失败`);
+      }
+      checkDone();
+    };
+    reader.onerror = function() {
+      errors.push(`${file.name} — 读取失败`);
+      checkDone();
+    };
+    reader.readAsDataURL(file);
+  });
+  event.target.value = '';
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('确定删除该材料？')) return;
+  try {
+    await deleteMaterialFromDB(id);
+  } catch(e) {
+    alert('删除失败，请重试');
+  }
+  materialsLibrary = materialsLibrary.filter(m => m.id !== id);
+  renderMaterials();
+}
+
+function renderMaterials() {
+  renderMaterialLibrary();
+  renderPDFSelectList();
+}
+
+function renderMaterialLibrary() {
+  const container = document.getElementById('materialLibrary');
+  if (materialsLibrary.length === 0) {
+    container.innerHTML = '<p style="font-size:13px;color:var(--text-secondary);width:100%;">材料库为空，请上传通用材料</p>';
+    return;
+  }
+  container.innerHTML = materialsLibrary.map(m => {
+    const isImg = m.type.startsWith('image/');
+    const thumbHtml = isImg
+      ? `<img src="${m.data}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;" alt="">`
+      : `<div style="width:60px;height:60px;background:#e8eeff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 4px;">PDF</div>`;
+    const sizeStr = m.size < 1024*1024 ? `${(m.size/1024).toFixed(0)}KB` : `${(m.size/(1024*1024)).toFixed(1)}MB`;
+    return `<div class="material-card">
+      <span class="mat-del" onclick="deleteMaterial('${m.id}')">✕</span>
+      ${thumbHtml}
+      <div class="mat-name" title="${m.fileName}">${m.name}</div>
+      <div class="mat-size">${sizeStr}</div>
+    </div>`;
+  }).join('');
+}
+
+// PDF选择列表
+let selectedPdfIds = [];
+
+function renderPDFSelectList() {
+  const container = document.getElementById('pdfSelectList');
+  if (materialsLibrary.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-secondary)">请先上传材料</p>';
+    return;
+  }
+  // 清理已不存在的选中id
+  selectedPdfIds = selectedPdfIds.filter(id => materialsLibrary.some(m => m.id === id));
+  container.innerHTML = materialsLibrary.map((m, idx) => {
+    const selIdx = selectedPdfIds.indexOf(m.id);
+    const selected = selIdx >= 0;
+    return `<div class="pdf-select-item${selected ? ' selected' : ''}" onclick="togglePdfSelect('${m.id}')">
+      <input type="checkbox" ${selected ? 'checked' : ''} style="width:auto;">
+      ${selected ? `<span class="pdf-order">${selIdx + 1}</span>` : ''}
+      <span>${escHtml(m.name)}</span>
+      <span style="font-size:10px;color:var(--text-secondary);margin-left:auto;">${m.type.startsWith('image/') ? '图片' : 'PDF'}</span>
+    </div>`;
+  }).join('');
+}
+
+function togglePdfSelect(id) {
+  const idx = selectedPdfIds.indexOf(id);
+  if (idx >= 0) selectedPdfIds.splice(idx, 1);
+  else selectedPdfIds.push(id);
+  renderPDFSelectList();
+}
+
+function movePdfItem(direction) {
+  if (selectedPdfIds.length === 0) return;
+  renderPDFSelectList();
+  // 在重新渲染后的列表中移动
+  const container = document.getElementById('pdfSelectList');
+  const items = container.querySelectorAll('.pdf-select-item');
+  // 找到选中的项目并应用移动
+  if (direction === -1) {
+    for (let i = 1; i < selectedPdfIds.length; i++) {
+      const idx = selectedPdfIds.indexOf(selectedPdfIds[i]);
+      if (idx > 0) {
+        [selectedPdfIds[idx], selectedPdfIds[idx-1]] = [selectedPdfIds[idx-1], selectedPdfIds[idx]];
+      }
+    }
+  } else {
+    for (let i = selectedPdfIds.length - 2; i >= 0; i--) {
+      const idx = selectedPdfIds.indexOf(selectedPdfIds[i]);
+      if (idx < selectedPdfIds.length - 1) {
+        [selectedPdfIds[idx], selectedPdfIds[idx+1]] = [selectedPdfIds[idx+1], selectedPdfIds[idx]];
+      }
+    }
+  }
+  renderPDFSelectList();
+}
+
+async function generatePDF() {
+  if (selectedPdfIds.length === 0) { alert('请先选择至少一个材料'); return; }
+  const statusEl = document.getElementById('pdfStatus');
+  statusEl.textContent = '正在生成...';
+  try {
+    const pdfDoc = await PDFLib.PDFDocument.create();
+    for (const id of selectedPdfIds) {
+      const mat = materialsLibrary.find(m => m.id === id);
+      if (!mat) continue;
+      if (mat.type === 'application/pdf') {
+        // 加载已有PDF并复制页面
+        const existingBytes = dataURLToBytes(mat.data);
+        const existingPdf = await PDFLib.PDFDocument.load(existingBytes);
+        const copiedPages = await pdfDoc.copyPages(existingPdf, existingPdf.getPageIndices());
+        copiedPages.forEach(page => pdfDoc.addPage(page));
+      } else if (mat.type.startsWith('image/')) {
+        // 将图片作为新页面嵌入
+        const imgBytes = dataURLToBytes(mat.data);
+        let image;
+        if (mat.type === 'image/png') {
+          image = await pdfDoc.embedPng(imgBytes);
+        } else {
+          image = await pdfDoc.embedJpg(imgBytes);
+        }
+        const page = pdfDoc.addPage([image.width, image.height]);
+        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+      }
+    }
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `申请材料_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    statusEl.textContent = '生成成功！';
+    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+  } catch(e) {
+    statusEl.textContent = '生成失败';
+    console.error(e);
+    alert('PDF生成失败：' + e.message);
+  }
+}
+
+function dataURLToBytes(dataURL) {
+  const base64 = dataURL.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// ===== 项目材料清单 =====
+function buildChecklistInputs(checklist) {
+  const container = document.getElementById('checklistContainer');
+  if (!checklist || checklist.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = checklist.map((c, i) => `
+    <div class="checklist-item">
+      <input type="checkbox" class="checklist-done" ${c.done ? 'checked' : ''}>
+      <input type="text" class="checklist-name" value="${escHtml(c.name)}" placeholder="材料名称" style="flex:1;">
+      <span class="item-del" onclick="this.closest('.checklist-item').remove()">✕</span>
+    </div>
+  `).join('');
+}
+
+function addChecklistItem() {
+  const container = document.getElementById('checklistContainer');
+  const div = document.createElement('div');
+  div.className = 'checklist-item';
+  div.innerHTML = `
+    <input type="checkbox" class="checklist-done">
+    <input type="text" class="checklist-name" value="" placeholder="材料名称" style="flex:1;">
+    <span class="item-del" onclick="this.closest('.checklist-item').remove()">✕</span>
+  `;
+  container.appendChild(div);
+}
+
+function getChecklistData() {
+  const rows = document.querySelectorAll('#checklistContainer .checklist-item');
+  const checklist = [];
+  rows.forEach(row => {
+    const name = row.querySelector('.checklist-name').value.trim();
+    if (name) {
+      checklist.push({ name, done: row.querySelector('.checklist-done').checked });
+    }
+  });
+  return checklist;
+}
+
+const VIEW_IDS = { table: 'viewTable', gantt: 'viewGantt', calendar: 'viewCalendar', stats: 'viewStats', materials: 'viewMaterials' };
+
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view-container').forEach(c => c.classList.toggle('active', c.id === VIEW_IDS[view]));
+  if (view === 'table') renderTable();
+  else if (view === 'gantt') renderGantt();
+  else if (view === 'calendar') renderCalendar();
+  else if (view === 'stats') renderStats();
+  else if (view === 'materials') renderMaterials();
+}
+
+function renderCurrentView() {
+  if (currentView === 'table') renderTable();
+  else if (currentView === 'gantt') renderGantt();
+  else if (currentView === 'calendar') renderCalendar();
+  else if (currentView === 'stats') renderStats();
+  else if (currentView === 'materials') renderMaterials();
+  else renderTable();
+}
+
+// ===== 事件绑定 =====
+document.getElementById('viewTabs').addEventListener('click', function(e) {
+  const tab = e.target.closest('.view-tab');
+  if (!tab) return;
+  switchView(tab.dataset.view);
+});
+
+document.getElementById('searchInput').addEventListener('input', function() {
+  renderCurrentView();
+});
+
+// 定时刷新倒计时（每30秒）
+setInterval(() => {
+  if (currentView === 'table') renderTable();
+}, 30000);
+
+// ===== 初始化 =====
+async function init() {
+  loadData();
+  await loadMaterials();
+  const now = new Date();
+  calendarYear = now.getFullYear();
+  calendarMonth = now.getMonth();
+  renderTable();
+
+  // 检查是否已登录
+  if (cloudReady) {
+    const user = Bmob.User.current();
+    if (user) {
+      onAuthStateChanged(user);
+    } else {
+      onAuthStateChanged(null);
+    }
+  } else {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('loginSub').textContent = '（未配置云同步，使用本地模式）';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
