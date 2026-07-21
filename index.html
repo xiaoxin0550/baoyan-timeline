@@ -805,6 +805,16 @@ body {
 <div id="modalOverlay" class="modal-overlay" style="display:none;" onclick="event.target===this && closeModal()">
   <div class="modal">
     <h3 id="modalTitle">添加申请项目</h3>
+    <div id="aiBlock" style="margin-bottom:12px;">
+      <button class="btn btn-sm" onclick="toggleAIFill()">🤖 AI 智能识别填充</button>
+      <div id="aiFillBox" style="display:none;margin-top:8px;">
+        <textarea id="aiInput" placeholder="粘贴学校通知原文，AI 自动提取学校、专业、时间节点等信息..." style="width:100%;min-height:80px;font-size:12px;"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <button class="btn btn-primary btn-sm" onclick="doAIFill()" id="aiFillBtn">开始识别</button>
+          <span style="font-size:11px;color:var(--text-secondary)" id="aiStatus"></span>
+        </div>
+      </div>
+    </div>
     <div class="form-group">
       <label>学校名称 *</label>
       <input type="text" id="formSchool" placeholder="例：清华大学">
@@ -856,6 +866,11 @@ body {
       <textarea id="formNotes" placeholder="申请链接、材料要求、账号信息等..."></textarea>
     </div>
     <div class="form-group">
+      <label>相关链接</label>
+      <div id="linksContainer"></div>
+      <button class="btn btn-sm" onclick="addLinkItem()" style="margin-top:4px;">+ 添加链接</button>
+    </div>
+    <div class="form-group">
       <label>申请材料清单</label>
       <div id="checklistContainer"></div>
       <button class="btn btn-sm" onclick="addChecklistItem()" style="margin-top:4px;">+ 添加材料项</button>
@@ -876,6 +891,10 @@ body {
     <div style="margin-top:12px;font-size:13px;color:var(--text-secondary);">
       <strong>备注：</strong><span id="detailNotes"></span>
     </div>
+    <div style="margin-top:12px;font-size:13px;" id="detailLinksBlock">
+      <strong>相关链接：</strong>
+      <div id="detailLinks"></div>
+    </div>
     <div style="margin-top:12px;font-size:13px;">
       <strong>材料清单：</strong>
       <div id="detailChecklist"></div>
@@ -887,6 +906,17 @@ body {
 </div>
 
 <!-- ===== 浮动添加按钮 ===== -->
+<!-- ===== 材料预览弹窗 ===== -->
+<div id="previewOverlay" class="modal-overlay" style="display:none;" onclick="event.target===this && closePreview()">
+  <div class="modal" style="max-width:700px;">
+    <h3 id="previewTitle"></h3>
+    <div id="previewContent" style="text-align:center;"></div>
+    <div class="form-actions">
+      <button class="btn" onclick="closePreview()">关闭</button>
+    </div>
+  </div>
+</div>
+
 <button class="fab" onclick="openAddModal()" title="添加项目">+</button>
 
 <script>
@@ -1060,7 +1090,7 @@ async function loadCloudData() {
     const cloudItems = (result.results || []).map(r => ({
       id: r.localId || r.objectId, school: r.school, program: r.program, major: r.major,
       status: r.status, stages: r.stages, notes: r.notes,
-      checklist: r.checklist, createdAt: r.itemCreatedAt || r.createdAt
+      checklist: r.checklist, links: r.links, createdAt: r.itemCreatedAt || r.createdAt
     }));
     console.log('云端项目数:', cloudItems.length);
 
@@ -1088,7 +1118,7 @@ async function saveItemToCloud(item) {
     const body = {
       localId: item.id, school: item.school, program: item.program,
       major: item.major || '', status: item.status, stages: item.stages,
-      notes: item.notes || '', checklist: item.checklist || [],
+      notes: item.notes || '', checklist: item.checklist || [], links: item.links || [],
       itemCreatedAt: item.createdAt, owner: currentUser.username || currentUser.email
     };
     const where = JSON.stringify({ localId: item.id });
@@ -1389,7 +1419,7 @@ function renderTable() {
     return `<tr class="${allDone ? 'row-expired' : ''}">
       <td><strong>${escHtml(item.school)}</strong></td>
       <td>${escHtml(item.major || '-')}</td>
-      <td>${escHtml(item.program)}</td>
+      <td>${escHtml(item.program)}${(item.links && item.links.length > 0) ? ' 🔗' : ''}</td>
       <td><span class="status-badge status-${item.status}">${STATUS_LABELS[item.status]}</span></td>
       <td>${stagesHtml}${moreCount}</td>
       <td><span class="notes-cell" onclick="openDetail('${item.id}')" title="${escHtml(item.notes || '点击查看详情')}">${escHtml(item.notes || '-')}</span></td>
@@ -1659,6 +1689,10 @@ function openAddModal() {
     { name: '录取公示', date: '' },
   ]);
   document.getElementById('checklistContainer').innerHTML = '';
+  document.getElementById('linksContainer').innerHTML = '';
+  document.getElementById('aiInput').value = '';
+  document.getElementById('aiFillBox').style.display = 'none';
+  document.getElementById('aiStatus').textContent = '';
   document.getElementById('modalOverlay').style.display = 'flex';
 }
 
@@ -1674,6 +1708,7 @@ function openEditModal(id) {
   document.getElementById('formNotes').value = item.notes || '';
   buildStageInputs(item.stages);
   buildChecklistInputs(item.checklist || []);
+  buildLinksInputs(item.links || []);
   document.getElementById('modalOverlay').style.display = 'flex';
 }
 
@@ -1733,6 +1768,7 @@ function saveItem() {
     stages,
     notes: document.getElementById('formNotes').value.trim(),
     checklist: getChecklistData(),
+    links: getLinksData(),
     createdAt: editingId ? (items.find(i => i.id === editingId)?.createdAt || new Date().toISOString().slice(0,10)) : new Date().toISOString().slice(0,10)
   };
 
@@ -1782,6 +1818,11 @@ function openDetail(id) {
     : checklist.map(c => `<div style="padding:2px 0;">
         <span style="cursor:pointer;${c.done?'color:var(--success);':''}">${c.done ? '✅' : '⬜'} ${escHtml(c.name)}</span>
       </div>`).join('');
+  const links = item.links || [];
+  document.getElementById('detailLinks').innerHTML = links.length === 0
+    ? '<span style="color:var(--text-secondary)">无</span>'
+    : links.map(l => `<div><a href="${escHtml(l.url)}" target="_blank" style="color:var(--primary);">🔗 ${escHtml(l.name || l.url)}</a></div>`).join('');
+
   document.getElementById('detailOverlay').style.display = 'flex';
 }
 
@@ -1999,8 +2040,8 @@ function renderMaterialLibrary() {
       ? `<img src="${m.data}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;" alt="">`
       : `<div style="width:60px;height:60px;background:#e8eeff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 4px;">PDF</div>`;
     const sizeStr = m.size < 1024*1024 ? `${(m.size/1024).toFixed(0)}KB` : `${(m.size/(1024*1024)).toFixed(1)}MB`;
-    return `<div class="material-card">
-      <span class="mat-del" onclick="deleteMaterial('${m.id}')">✕</span>
+    return `<div class="material-card" data-mat-id="${m.id}" onclick="previewMaterial('${m.id}')">
+      <span class="mat-del" onclick="event.stopPropagation();deleteMaterial('${m.id}')">✕</span>
       ${thumbHtml}
       <div class="mat-name" title="${m.fileName}">${m.name}</div>
       <div class="mat-size">${sizeStr}</div>
@@ -2240,6 +2281,121 @@ handleLogout = function() {
   localStorage.removeItem('baoyan_session');
   _origHandleLogout();
 };
+
+// ===== 项目链接管理 =====
+function buildLinksInputs(links) {
+  const container = document.getElementById('linksContainer');
+  if (!links || links.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = links.map((l, i) => `
+    <div class="checklist-item">
+      <input type="text" class="link-name" value="${escHtml(l.name || '')}" placeholder="链接名称" style="flex:1;">
+      <input type="url" class="link-url" value="${escHtml(l.url || '')}" placeholder="https://..." style="flex:2;">
+      <span class="item-del" onclick="this.closest('.checklist-item').remove()">✕</span>
+    </div>
+  `).join('');
+}
+
+function addLinkItem() {
+  const container = document.getElementById('linksContainer');
+  const div = document.createElement('div');
+  div.className = 'checklist-item';
+  div.innerHTML = `
+    <input type="text" class="link-name" value="" placeholder="链接名称" style="flex:1;">
+    <input type="url" class="link-url" value="" placeholder="https://..." style="flex:2;">
+    <span class="item-del" onclick="this.closest('.checklist-item').remove()">✕</span>
+  `;
+  container.appendChild(div);
+}
+
+function getLinksData() {
+  const rows = document.querySelectorAll('#linksContainer .checklist-item');
+  const links = [];
+  rows.forEach(row => {
+    const name = row.querySelector('.link-name')?.value.trim();
+    const url = row.querySelector('.link-url')?.value.trim();
+    if (url) links.push({ name: name || url, url });
+  });
+  return links;
+}
+
+// ===== 材料预览 =====
+function previewMaterial(id) {
+  const mat = materialsLibrary.find(m => m.id === id);
+  if (!mat) return;
+  document.getElementById('previewTitle').textContent = mat.fileName;
+  const content = document.getElementById('previewContent');
+  if (mat.type.startsWith('image/')) {
+    content.innerHTML = `<img src="${mat.data}" style="max-width:100%;max-height:60vh;border-radius:4px;" alt="">`;
+  } else {
+    content.innerHTML = `<div style="padding:40px;background:#f9fafb;border-radius:8px;">
+      <div style="font-size:48px;margin-bottom:12px;">📄</div>
+      <p><strong>${escHtml(mat.fileName)}</strong></p>
+      <p style="color:var(--text-secondary);font-size:13px;">${mat.type} · ${mat.size < 1024*1024 ? (mat.size/1024).toFixed(0)+'KB' : (mat.size/(1024*1024)).toFixed(1)+'MB'}</p>
+      <a href="${mat.data}" download="${mat.fileName}" class="btn btn-sm" style="margin-top:8px;">下载文件</a>
+    </div>`;
+  }
+  document.getElementById('previewOverlay').style.display = 'flex';
+}
+
+function closePreview() {
+  document.getElementById('previewOverlay').style.display = 'none';
+}
+
+// ===== AI 智能识别 =====
+function toggleAIFill() {
+  const box = document.getElementById('aiFillBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function doAIFill() {
+  const text = document.getElementById('aiInput').value.trim();
+  if (!text) { alert('请先粘贴通知原文'); return; }
+
+  const btn = document.getElementById('aiFillBtn');
+  const status = document.getElementById('aiStatus');
+  btn.disabled = true; btn.textContent = '识别中...';
+  status.textContent = '';
+
+  try {
+    const resp = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer sk-6b6e008f893546169387a544118af679' },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{
+          role: 'system',
+          content: '你是一个保研信息提取助手。从用户提供的通知文本中提取信息，返回纯JSON，不要markdown标记。格式：{"school":"学校名","program":"项目名","major":"专业","stages":[{"name":"阶段名","date":"YYYY-MM-DD"},...],"notes":"备注摘要"}。如果某项不确定，填""。日期格式必须是YYYY-MM-DD。'
+        }, {
+          role: 'user',
+          content: text
+        }],
+        temperature: 0.1,
+        max_tokens: 2000
+      })
+    });
+    const data = await resp.json();
+    let content = data.choices?.[0]?.message?.content || '';
+    // 清理可能的 markdown 包裹
+    content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const parsed = JSON.parse(content);
+
+    // 填充表单
+    if (parsed.school) document.getElementById('formSchool').value = parsed.school;
+    if (parsed.program) document.getElementById('formProgram').value = parsed.program;
+    if (parsed.major) document.getElementById('formMajor').value = parsed.major;
+    if (parsed.notes) document.getElementById('formNotes').value = parsed.notes;
+    if (parsed.stages && parsed.stages.length > 0) {
+      buildStageInputs(parsed.stages);
+    }
+    status.textContent = '识别完成，请核对';
+    status.style.color = 'var(--success)';
+  } catch(e) {
+    status.textContent = '识别失败: ' + e.message;
+    status.style.color = 'var(--danger)';
+    console.error(e);
+  }
+  btn.disabled = false; btn.textContent = '开始识别';
+}
 
 init();
 </script>
